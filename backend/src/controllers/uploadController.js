@@ -35,48 +35,74 @@ const fileFilter = (req, file, cb) => {
 const upload = multer({ 
   storage, 
   fileFilter,
-  limits: { fileSize: 10 * 1024 * 1024 } // 10 MB limit
+  limits: { fileSize: 50 * 1024 * 1024 } // 50 MB limit
 });
+
+const uploadMiddleware = (req, res, next) => {
+  const multerUpload = upload.array('files', 10);
+  multerUpload(req, res, (err) => {
+    if (err) {
+      console.error('❌ Multer Error:', err);
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ success: false, error: 'File exceeds the 50MB limit.' });
+      }
+      return res.status(400).json({ success: false, error: `Upload error: ${err.message}` });
+    }
+    next();
+  });
+};
 
 /**
  * Handle document upload and injection into RAG Vector Store
  */
 async function postUpload(req, res) {
   try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'No file provided or invalid format.' });
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ error: 'No files provided or invalid format.' });
     }
 
-    const filePath = req.file.path;
-    const originalName = req.file.originalname;
+    const results = [];
+    const filesInfo = [];
 
-    // Inject document dynamically
-    const result = await addDocumentToVectorStore(filePath, originalName);
+    // Process all files sequentially to avoid overloading memory/embeddings model
+    for (const file of req.files) {
+      const filePath = file.path;
+      const originalName = file.originalname;
+
+      // Inject document dynamically
+      const result = await addDocumentToVectorStore(filePath, originalName);
+      results.push(result);
+      filesInfo.push({ filename: originalName });
+    }
 
     return res.status(200).json({
-      message: 'Document successfully loaded into the knowledge base.',
+      message: 'Documents successfully loaded into the knowledge base.',
       success: true,
-      filename: originalName,
-      details: result
+      files: filesInfo,
+      details: results
     });
   } catch (error) {
     console.error('❌ Upload Error:', error);
-    // Cleanup the uploaded file if there's an error during vector embedding
-    if (req.file && fs.existsSync(req.file.path)) {
-      try {
-        fs.unlinkSync(req.file.path);
-      } catch(cleanupError) {
-        console.error('Failed to cleanup file:', cleanupError);
+    // Cleanup the uploaded files if there's an error during vector embedding
+    if (req.files) {
+      for (const file of req.files) {
+        if (fs.existsSync(file.path)) {
+          try {
+            fs.unlinkSync(file.path);
+          } catch(cleanupError) {
+            console.error(`Failed to cleanup file ${file.originalname}:`, cleanupError);
+          }
+        }
       }
     }
     return res.status(500).json({
-      error: error.message || 'Failed to process document.',
+      error: error.message || 'Failed to process documents.',
       success: false
     });
   }
 }
 
 module.exports = {
-  upload,
+  uploadMiddleware,
   postUpload
 };

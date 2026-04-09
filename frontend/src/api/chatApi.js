@@ -14,9 +14,11 @@ export async function postChatMessage(message) {
   return res.data;
 }
 
-export async function postDocumentUpload(file) {
+export async function postDocumentUpload(files) {
   const formData = new FormData();
-  formData.append('file', file);
+  files.forEach((file) => {
+    formData.append('files', file);
+  });
   
   const res = await chatApi.post('/upload', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },

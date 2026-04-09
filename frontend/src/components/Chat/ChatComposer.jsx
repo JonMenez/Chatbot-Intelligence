@@ -4,9 +4,9 @@ export function ChatComposer({ message, setMessage, loading, uploading, uploaded
   const fileInputRef = useRef(null);
 
   const handleFileChange = (e) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      onUpload(file);
+    const files = Array.from(e.target.files || []);
+    if (files.length > 0) {
+      onUpload(files);
       e.target.value = null; // reset
     }
   };
@@ -15,7 +15,7 @@ export function ChatComposer({ message, setMessage, loading, uploading, uploaded
     <div className="fixed bottom-12 left-0 right-0 z-40 px-6 pointer-events-none">
       <div className="max-w-4xl mx-auto w-full pointer-events-auto flex flex-col gap-3">
         
-        {/* Archivos subidos en memoria */}
+        {/* Uploaded files in memory */}
         {uploadedFiles && uploadedFiles.length > 0 && (
           <div className="flex flex-wrap items-center gap-2 px-2 animate-fade-in">
             {uploadedFiles.map((filename, i) => (
@@ -35,7 +35,8 @@ export function ChatComposer({ message, setMessage, loading, uploading, uploaded
           ref={fileInputRef} 
           onChange={handleFileChange} 
           accept=".pdf,.txt" 
-          className="hidden" 
+          className="hidden"
+          multiple
         />
 
         <form

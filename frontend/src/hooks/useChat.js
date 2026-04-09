@@ -77,17 +77,23 @@ export function useChat({ initialChat } = {}) {
     [message]
   );
 
-  const uploadDocument = useCallback(async (file) => {
-    if (!file) return;
+  const uploadDocument = useCallback(async (files) => {
+    if (!files || files.length === 0) return;
     setUploading(true);
     try {
-      const data = await postDocumentUpload(file);
-      if (data?.success) {
-        setUploadedFiles((prev) => [...prev, data.filename]);
-        setChat((prev) => [...prev, { type: 'ai', content: `He analizado exitosamente el documento **${data.filename}**. Ya puedes hacerme preguntas al respecto.` }]);
+      const data = await postDocumentUpload(files);
+      if (data?.success && data?.files) {
+        const filenames = data.files.map(f => f.filename);
+        setUploadedFiles((prev) => [...prev, ...filenames]);
+        
+        const messageText = filenames.length > 1 
+          ? `I have successfully analyzed the following documents: **${filenames.join(', ')}**. You can now ask me questions about them.`
+          : `I have successfully analyzed the document **${filenames[0]}**. You can now ask me questions about it.`;
+          
+        setChat((prev) => [...prev, { type: 'ai', content: messageText }]);
       }
     } catch (err) {
-      setChat((prev) => [...prev, { type: 'ai', content: `Error subiendo documento: ${err.response?.data?.error || err.message}` }]);
+      setChat((prev) => [...prev, { type: 'ai', content: `Error uploading document(s): ${err.response?.data?.error || err.message}` }]);
     } finally {
       setUploading(false);
     }

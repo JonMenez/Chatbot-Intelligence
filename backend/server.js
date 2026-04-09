@@ -4,7 +4,7 @@ const cors = require('cors');
 const { isGroqReady } = require('./src/config/groq');
 const { postChat } = require('./src/controllers/chatController');
 const { postRag, initRag } = require('./src/controllers/ragController');
-const { upload, postUpload } = require('./src/controllers/uploadController');
+const { uploadMiddleware, postUpload } = require('./src/controllers/uploadController');
 
 const app = express();
 
@@ -16,8 +16,8 @@ app.use(cors({
 }));
 
 // Increase payload size limit
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ limit: '10mb', extended: true }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Reuse shared Groq configuration to avoid prompt/logic duplication.
 const groqReady = isGroqReady();
@@ -416,8 +416,8 @@ app.get('/', (req, res) => {
                 <span class="tag">JSON</span>
               </div>
               <div class="code-rows">
-                <div class="code-row"><span class="k">Send:</span><code>{"message": "pregunta sobre documentos"}</code></div>
-                <div class="code-row"><span class="k">Receive:</span><code class="muted">{"reply": "respuesta con contexto"}</code></div>
+                <div class="code-row"><span class="k">Send:</span><code>{"message": "question about documents"}</code></div>
+                <div class="code-row"><span class="k">Receive:</span><code class="muted">{"reply": "response with context"}</code></div>
               </div>
             </article>
             <article class="endpoint">
@@ -447,7 +447,7 @@ app.post('/chat', postChat);
 app.post('/rag', postRag);
 
 // Document upload endpoint for RAG
-app.post('/upload', upload.single('file'), postUpload);
+app.post('/upload', uploadMiddleware, postUpload);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
