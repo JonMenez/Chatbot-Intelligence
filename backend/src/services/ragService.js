@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { Document } = require('@langchain/core/documents');
 const { RecursiveCharacterTextSplitter } = require('@langchain/textsplitters');
-const { MemoryVectorStore } = require('@langchain/classic/vectorstores/memory');
+const { Chroma } = require('@langchain/community/vectorstores/chroma');
 const { PDFLoader } = require("@langchain/community/document_loaders/fs/pdf");
 const { HuggingFaceTransformersEmbeddings } = require('@langchain/community/embeddings/huggingface_transformers');
 const { getGroqClient, isGroqReady } = require('../config/groq');
@@ -275,36 +275,84 @@ async function initRag({ maxRetries = 3, initialDelayMs = 1500 } = {}) {
         logger.success(`Created documents directory`);
       }
 
-      // Step 1: Load documents
-      const rawDocs = await loadDocumentsFromFolder(DOCUMENTS_DIR);
-      if (!rawDocs.length) {
-        logger.warn('No documents found in documents folder');
-        ragReady = false;
-        return;
-      }
-
-      // Step 2: Chunk documents
-      const docs = await chunkDocuments(rawDocs);
-      if (!docs.length) {
-        logger.warn('No chunks generated from documents');
-        ragReady = false;
-        return;
-      }
-
-      // Step 3: Initialize embeddings (HF Transformers - local, free)
+      // Step 3: Initialize embeddings (✅ Free, runs locally)
       logger.info('Initializing Hugging Face embeddings model (Xenova/all-MiniLM-L6-v2)...');
       const embeddings = new HuggingFaceTransformersEmbeddings({
-        modelName: 'Xenova/all-MiniLM-L6-v2', // ✅ Free, runs locally
+        modelName: 'Xenova/all-MiniLM-L6-v2', 
       });
 
-      // Step 4: Create vector store from documents
-      logger.info('Creating in-memory vector store...');
-      vectorStore = await MemoryVectorStore.fromDocuments(docs, embeddings);
-      ragReady = true;
+      const COLLECTION_NAME = "chatbot_knowledge";
+      const CHROMA_URL = process.env.CHROMA_URL || "http://localhost:8000";
+      const resetDb = process.env.RESET_CHROMA_DB === 'true';
+      let shouldIngest = false;
 
-      logger.success(
-        `RAG initialized successfully: ${totalDocumentsLoaded} docs → ${totalChunksGenerated} chunks`
-      );
+      // Initialize Chroma Client to check status
+      try {
+        const { ChromaClient } = require("chromadb");
+        const client = new ChromaClient({ path: CHROMA_URL });
+
+        if (resetDb) {
+          logger.warn(`RESET_CHROMA_DB is true. Eliminando colección '${COLLECTION_NAME}'...`);
+          try {
+            await client.deleteCollection({ name: COLLECTION_NAME });
+            logger.success(`Colección eliminada.`);
+          } catch (e) {
+            logger.debug(`Colección no existía o no se pudo eliminar (es normal en el primer inicio).`);
+          }
+          shouldIngest = true;
+        } else {
+          // Check if collection exists and has documents
+          try {
+            const collection = await client.getCollection({ name: COLLECTION_NAME });
+            const count = await collection.count();
+            if (count > 0) {
+              logger.info(`ChromaDB collection '${COLLECTION_NAME}' ya contiene ${count} chunks. Omitiendo ingesta inicial.`);
+              totalChunksGenerated = count;
+              shouldIngest = false;
+            } else {
+              shouldIngest = true;
+            }
+          } catch (e) {
+            // Collection doesn't exist yet
+            shouldIngest = true;
+          }
+        }
+      } catch (err) {
+        logger.warn(`No se pudo conectar a ChromaDB en ${CHROMA_URL}. ¿Está corriendo Docker?`);
+        throw new Error(`ChromaDB connection failed: ${err.message}`);
+      }
+
+      if (shouldIngest) {
+        logger.info('Cargando documentos para la ingesta inicial en ChromaDB...');
+        // Step 1: Load documents
+        const rawDocs = await loadDocumentsFromFolder(DOCUMENTS_DIR);
+        if (rawDocs.length > 0) {
+          // Step 2: Chunk documents
+          const docs = await chunkDocuments(rawDocs);
+          if (docs.length > 0) {
+            logger.info('Guardando chunks en la base de datos persistente ChromaDB...');
+            await Chroma.fromDocuments(docs, embeddings, {
+              collectionName: COLLECTION_NAME,
+              url: CHROMA_URL,
+            });
+            logger.success(`Ingesta inicial exitosa: ${docs.length} chunks agregados a ChromaDB.`);
+          } else {
+            logger.warn('No chunks generated from documents.');
+          }
+        } else {
+          logger.warn('No documents found in documents folder. La base de datos iniciará vacía.');
+        }
+      }
+
+      // Instanciar la base de datos de origen conectando al servidor Chroma
+      logger.info('Conectando store vectorial con Chroma...');
+      vectorStore = new Chroma(embeddings, {
+        collectionName: COLLECTION_NAME,
+        url: CHROMA_URL,
+      });
+
+      ragReady = true;
+      logger.success(`RAG (ChromaDB) inicializado correctamente.`);
       return;
     } catch (error) {
       ragReady = false;
@@ -475,8 +523,14 @@ async function answerWithRag(message) {
   }
 
   try {
-    // STEP 1: Retrieve relevant documents
-    let relevantDocs = await vectorStore.similaritySearch(message, RETRIEVAL_CONFIG.k);
+    // STEP 1: Retrieve relevant documents (utilizando .similaritySearchWithScore para ChromaDB)
+    const vectorResults = await vectorStore.similaritySearchWithScore(message, RETRIEVAL_CONFIG.k);
+    
+    // Extraer los documentos. 
+    // En LangChain Chroma, score suele ser distancia. Dependiendo de la función, filtraremos los más relevantes o pasamos todos.
+    // Filtrado condicional según scoreThreshold (si queremos).
+    // Para simplificar, extraemos el Document de la tupla [Document, score]
+    let relevantDocs = vectorResults.map(([doc, score]) => doc);
     const retrievalTime = Date.now() - startTime;
 
     // IMPROVEMENT #3: Detailed logging
@@ -608,7 +662,7 @@ async function addDocumentToVectorStore(filePath, originalName) {
     throw new Error('Could not generate text chunks from document');
   }
 
-  // Insert into memory store
+  // Insert into ChromaDB store (se persistirá en la DB via HTTP)
   await vectorStore.addDocuments(docs);
   logger.success(`Dynamically added ${originalName}: ${docs.length} chunks added`);
 
