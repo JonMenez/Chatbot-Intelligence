@@ -3,8 +3,9 @@
 ## 🚀 Quick Start
 
 ### Requirements
-- Node.js 18+
-- npm 9+
+- Node.js 20+ (Strictly enforced via `.nvmrc` and `engines` for ONNX cross-platform compatibility)
+- npm 10+
+- Docker & Docker Compose (required for the ChromaDB Vector Database)
 - Groq API Key (configured in `/backend/.env`)
 
 ### Installation
@@ -21,32 +22,44 @@ npm install
 
 ### Execution
 
-**Terminal 1 - Backend (Port 3001):**
+There are two ways to run the Ethereal Intelligence infrastructure:
+
+#### Method 1: Using Docker Compose (Recommended)
+This approach automatically orchestrates the frontend, backend, and ChromaDB vector database flawlessly in the background using Linux Alpine/Slim sealed environments.
+
+```bash
+# From the root directory, rebuild and start all containers in detached mode:
+docker-compose up -d --build
+```
+Your UI will be instantly available at **http://localhost:5173**.
+
+* **Viewing Logs**: To watch logs for a specific service in real-time without locking your terminal, open a console in the root directory and run:
+  - `docker-compose logs -f backend` 
+  - `docker-compose logs -f frontend`
+  - `docker-compose logs -f chromadb`
+* **Shutting Down**: Cleanly stop everything using `docker-compose down`
+
+#### Method 2: Hybrid Local Mode (Node.js + Docker ChromaDB)
+If you prefer running Node.js locally without containerizing your Express/Vite servers, you still **must** run ChromaDB via Docker for the RAG system to work.
+
+**Terminal 1 - ChromaDB Vector Database (Port 8000):**
+```bash
+docker run --name chatbot_chroma -p 8000:8000 -v $(pwd)/chroma_data:/chroma/chroma chromadb/chroma:latest
+```
+
+**Terminal 2 - Backend (Port 3001):**
 ```bash
 cd backend
-npm start
+npm run dev
 ```
 
-You should see:
-```
-✅ Groq client initialized successfully
-🚀 Chatbot AI API started
-📍 Server running on http://localhost:3001
-🔑 Groq: ✅ Connected
-```
-
-**Terminal 2 - Frontend (Port 5173):**
+**Terminal 3 - Frontend (Port 5173):**
 ```bash
 cd frontend
 npm run dev
 ```
 
-You should see:
-```
-➜  Local:   http://localhost:5173/
-```
-
-Then open **http://localhost:5173** in your browser.
+Open **http://localhost:5173** in your browser.
 
 ---
 
@@ -138,6 +151,11 @@ Response:
    - Backend: `http://localhost:3001`
    - Frontend: `http://localhost:5173`
 3. **Check browser Console:** F12 > Console to see errors
+
+### ChromaConnectionError: Failed to connect to chromadb
+
+1. **Database is Off**: Your backend likely threw an `Upload Error` or `ChromaConnectionError` because ChromaDB isn't running. Ensure your vector database container is spun up (`docker-compose up chromadb` or `docker run ... chromadb/chroma`).
+2. **Anonymous Volumes Caching Old Modules**: If Docker Compose is throwing a missing package error (like `@huggingface/transformers`), or Alpine throws an `ld-linux` linking error on `onnxruntime`, try resetting your internal `node_modules` anonymous volumes by tearing everything down completely with `docker-compose down -v` and rebuilding via `docker-compose up --build`.
 
 ### API Key Error
 

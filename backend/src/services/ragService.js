@@ -18,10 +18,10 @@ const MIN_DOCUMENT_CHARS = 100; // Skip documents shorter than this
 const MIN_CHUNK_CHARS = 50;     // Skip chunks shorter than this
 
 // Chunking parameters optimized for technical/knowledge documents
-// Inspired by: https://docs.langchain.com/docs/modules/data_connection/document_loaders/
+// Inspired by: NotebookLM best practices
 const SPLITTER_CONFIG = {
-  chunkSize: 600,        // Reduced from 800 to avoid cutting mid-sentence in technical docs
-  chunkOverlap: 150,     // Increased to 25% overlap for better context continuity
+  chunkSize: 1000,       // Increased to 1000 as per NotebookLM suggestion
+  chunkOverlap: 200,     // 20% overlap strategy
   separators: [
     '\n\n',              // Priority 1: Paragraph breaks (preserve structure)
     '\n',                // Priority 2: Line breaks
@@ -33,8 +33,8 @@ const SPLITTER_CONFIG = {
 
 // Vector retrieval configuration
 const RETRIEVAL_CONFIG = {
-  k: 4,                  // Retrieve top-4 chunks instead of 3 for richer context
-  scoreThreshold: 0.50,  // Optional: filter out low-relevance results
+  k: 5,                  // Retrieve top-5 chunks instead of 4 for richer context
+  scoreThreshold: 0.75,  // NotebookLM Suggestion: Similarity score threshold (ignore < 0.75)
 };
 
 // LLM parameters for RAG
@@ -164,6 +164,8 @@ async function loadDocumentsFromFolder(folderPath) {
           source: entry.name,
           loadedAt: new Date().toISOString(),
           originalSize: trimmedText.length,
+          fileExtension: ext,
+          category: ext === '.pdf' ? 'document' : 'text_file',
         },
       });
     } catch (err) {
@@ -397,34 +399,25 @@ function isRagReady() {
  * @returns {string} System prompt
  */
 function buildSystemPrompt() {
-  return `You are a senior AI Agent Developer assistant helping MERN developers transition into AI/ML.
+  return `You are a senior AI Agent Developer assistant helping users.
 
-Your role: Provide accurate, practical, and actionable answers grounded in the provided knowledge base.
+Your role: Provide accurate, practical, and actionable answers grounded strictly in the provided knowledge base.
 
-=== CRITICAL RULES ===
+=== CRITICAL ANTI-HALLUCINATION RULES ===
 1. **You MUST ONLY use information from the provided context.**
-2. **If the answer is NOT in the provided context, you MUST respond EXACTLY with:**
-   "I don't have enough information in the knowledge base to answer this accurately."
-3. **Never invent, assume, or extrapolate beyond the provided context.**
+2. **If the user's question cannot be answered using the provided context, you MUST NOT guess or invent an answer.**
+3. **If the context is empty or you lack information, you MUST reply EXACTLY with:**
+   "No relevant information found in the knowledge base, I cannot answer this reliably."
 4. **Never mention that you're an AI or talk about your limitations.**
 
 === HOW TO RESPOND ===
 1. Read the provided context carefully.
-2. Think through the question step-by-step (Chain of Thought).
-3. Provide a clear, concise answer (1-2 paragraphs max).
-4. Use concrete examples from the context if available.
-5. Use analogies to MERN concepts when appropriate.
+2. Provide a clear, concise answer (1-2 paragraphs max).
+3. Base your answer strictly on the facts presented in the context.
 
 === TONE & FORMAT ===
 - Be professional but friendly.
-- Be specific and avoid vague language.
-- For technical questions, include code examples if available in context.
-- Format code blocks clearly using markdown.
-
-=== OUTPUT GUIDELINES ===
-- Maximum 3 paragraphs.
-- Use bullet points for lists.
-- If unsure, ask clarifying questions rather than guessing.`;
+- Format code blocks clearly using markdown.`;
 }
 
 /**
@@ -435,6 +428,18 @@ Your role: Provide accurate, practical, and actionable answers grounded in the p
  * @returns {string} Formatted user prompt
  */
 function buildUserPrompt(message, relevantDocs) {
+  // If no relevant docs passed the threshold, send the specific prompt directly to Groq
+  if (!relevantDocs || relevantDocs.length === 0) {
+    return `KNOWLEDGE BASE:
+[EMPTY - NO RELEVANT DOCUMENTS PASSED THE THRESHOLD]
+
+QUESTION:
+${message}
+
+INSTRUCTION:
+No relevant information found in the context. Tell the user you don't know the answer.`;
+  }
+
   // Format context with source attribution
   const contextWithSources = relevantDocs
     .map((doc, idx) => {
@@ -526,15 +531,27 @@ async function answerWithRag(message) {
     // STEP 1: Retrieve relevant documents (utilizando .similaritySearchWithScore para ChromaDB)
     const vectorResults = await vectorStore.similaritySearchWithScore(message, RETRIEVAL_CONFIG.k);
     
-    // Extraer los documentos. 
-    // En LangChain Chroma, score suele ser distancia. Dependiendo de la función, filtraremos los más relevantes o pasamos todos.
-    // Filtrado condicional según scoreThreshold (si queremos).
-    // Para simplificar, extraemos el Document de la tupla [Document, score]
-    let relevantDocs = vectorResults.map(([doc, score]) => doc);
+    // Apply Similarity Score Filtering rule
+    // LangChain Chroma usually returns distance (L2 or Cosine). Converting distance to similarity (1 - distance)
+    const scoredDocs = vectorResults.map(([doc, distance]) => ({
+      doc,
+      similarity: 1 - distance
+    }));
+
+    // Filter documents strictly by threshold
+    const filteredDocs = scoredDocs.filter((item) => {
+      const passed = item.similarity >= RETRIEVAL_CONFIG.scoreThreshold;
+      if (!passed) {
+        logger.debug(`Filtered out chunk from ${item.doc.metadata.source} (Similarity: ${item.similarity.toFixed(2)} < Threshold: ${RETRIEVAL_CONFIG.scoreThreshold})`);
+      }
+      return passed;
+    });
+
+    let relevantDocs = filteredDocs.map((item) => item.doc);
     const retrievalTime = Date.now() - startTime;
 
     // IMPROVEMENT #3: Detailed logging
-    logger.debug(`Retrieved ${relevantDocs.length} documents for query: "${message.substring(0, 60)}..."`);
+    logger.debug(`Retrieved ${vectorResults.length} docs, ${relevantDocs.length} passed threshold for query: "${message.substring(0, 60)}..."`);
     relevantDocs.forEach((doc, i) => {
       const source = doc.metadata.source;
       const chunk = doc.metadata.chunk > 0 ? `, Chunk ${doc.metadata.chunk}` : '';
@@ -542,20 +559,10 @@ async function answerWithRag(message) {
     });
     logger.debug(`Retrieval latency: ${retrievalTime}ms`);
 
-    // Filter out irrelevant results if score threshold is available (MemoryVectorStore limitation)
     if (relevantDocs.length === 0) {
-      logger.warn(`No relevant documents found for query: "${message.substring(0, 60)}..."`);
-      return {
-        reply:
-          "I don't have enough information in the knowledge base to answer this accurately.",
-        confidence: 0,
-        sources: [],
-        metadata: {
-          retrievalTime,
-          documentsRetrieved: 0,
-          modelUsed: 'N/A',
-        },
-      };
+      logger.warn(`No relevant documents passed threshold for query: "${message.substring(0, 60)}..."`);
+      // We do NOT return early here anymore.
+      // We pass the empty context to Groq to force it to respond naturally.
     }
 
     // STEP 2: Build structured prompts
@@ -652,6 +659,8 @@ async function addDocumentToVectorStore(filePath, originalName) {
       source: originalName,
       loadedAt: new Date().toISOString(),
       originalSize: trimmedText.length,
+      fileExtension: ext,
+      category: ext === '.pdf' ? 'document' : 'text_file',
     },
   };
 
