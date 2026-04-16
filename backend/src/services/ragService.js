@@ -6,6 +6,7 @@ const { Chroma } = require('@langchain/community/vectorstores/chroma');
 const { PDFLoader } = require("@langchain/community/document_loaders/fs/pdf");
 const { HuggingFaceTransformersEmbeddings } = require('@langchain/community/embeddings/huggingface_transformers');
 const { getGroqClient, isGroqReady } = require('../config/groq');
+const registryService = require('./registryService');
 
 // ============================================================================
 // CONFIGURATION & CONSTANTS
@@ -158,10 +159,13 @@ async function loadDocumentsFromFolder(folderPath) {
       // IMPROVEMENT #4b: Track document size
       logger.debug(`Loaded ${entry.name}: ${trimmedText.length} chars`);
 
+      // Use registryService to get original file name instead of disk name
+      const originalName = await registryService.getOriginalName(entry.name);
+
       docs.push({
         text: trimmedText,
         metadata: {
-          source: entry.name,
+          source: originalName,
           loadedAt: new Date().toISOString(),
           originalSize: trimmedText.length,
           fileExtension: ext,

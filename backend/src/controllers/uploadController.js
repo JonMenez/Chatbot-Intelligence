@@ -2,6 +2,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { addDocumentToVectorStore } = require('../services/ragService');
+const registryService = require('../services/registryService');
 
 // Ensure documents directory exists
 const DOCUMENTS_DIR = path.join(__dirname, '../../../documents');
@@ -68,6 +69,9 @@ async function postUpload(req, res) {
     for (const file of req.files) {
       const filePath = file.path;
       const originalName = file.originalname;
+
+      // Register the file mapping so startup ingestion uses the proper source
+      await registryService.registerDocumentMapping(file.filename, originalName);
 
       // Inject document dynamically
       const result = await addDocumentToVectorStore(filePath, originalName);
