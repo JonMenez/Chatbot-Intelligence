@@ -28,3 +28,9 @@ This document outlines the strict architectural decisions, constraints, and patt
 ## 5. Language & Interaction Standards
 - **Codebase Language**: All source code, variable names, function names, pull requests, and internal project comments MUST be written exclusively in English.
 - **Communication Language**: When the AI agent converses with the developer in the chat interface, it MUST always reply and explain concepts exclusively in Spanish. All other technical artifacts or code snippets remain in English.
+
+## 6. System Design & Architectural Best Practices
+- **Health Checks & Startup**: Docker configurations MUST use proper `healthcheck` blocks. Dependencies should rely on `condition: service_healthy` rather than just container startup, as a running process does not mean the service (e.g., ChromaDB) is ready to accept connections.
+- **Data Boundaries & Source Consistency**: The physical disk filename (which may contain deduplication timestamps) must strictly be separated from the logical `originalName`. Always record and expose the original file name to the user for accurate source attribution, utilizing a registry/mapping pattern if necessary.
+- **API Safeguards**: Critical endpoints (such as `/rag` and `/upload`) MUST enforce rate limiting to prevent both intentional abuse and accidental loops that could exhaust API credits or crash the embedding node.
+- **Prompt & Clean Code Architecture**: Do not hardcode monolithic system/user prompts within execution logic. Templates must be separated into clear, distinct functions or constants (e.g., `SYSTEM_INSTRUCTIONS`, `qaPromptTemplate`) to maintain testability and cleanly yield the messages array format expected by the LLM SDK.

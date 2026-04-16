@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { postChatMessage, postDocumentUpload } from '../api/chatApi.js';
+import { postChatMessageStream, postDocumentUpload } from '../api/chatApi.js';
 
 const DEFAULT_INITIAL_CHAT = [
   {
@@ -50,31 +50,65 @@ export function useChat({ initialChat } = {}) {
 
       const userMsg = message;
       setMessage('');
+      
+      // We will prepare the chat history for memory (excluding the new message)
+      // Only send valid message content, keeping it clean
+      const chatHistory = chat.map(c => ({
+        role: c.type === 'ai' ? 'assistant' : 'user',
+        content: c.content
+      }));
+
+      // Immediately add User message to UI
       setChat((prev) => [...prev, { type: 'user', content: userMsg }]);
+      
+      // Placeholder for AI streaming response
+      setChat((prev) => [...prev, { type: 'ai', content: '', isStreaming: true }]);
       setLoading(true);
 
       try {
-        const data = await postChatMessage(userMsg);
-        if (data?.reply) {
-          setChat((prev) => [
-            ...prev,
-            {
-              type: 'ai',
-              content: data.reply,
-              confidence: data.confidence,
-              sources: data.sources,
-            },
-          ]);
-        } else {
-          throw new Error('Invalid response format');
-        }
+        await postChatMessageStream(userMsg, chatHistory, (data) => {
+          if (data.error) {
+            throw new Error(data.error);
+          }
+          if (data.chunk) {
+            setChat((prev) => {
+              const newChat = [...prev];
+              const lastMsg = newChat[newChat.length - 1];
+              if (lastMsg && lastMsg.type === 'ai') {
+                lastMsg.content += data.chunk;
+              }
+              return newChat;
+            });
+          }
+          if (data.done) {
+            setChat((prev) => {
+              const newChat = [...prev];
+              const lastMsg = newChat[newChat.length - 1];
+              if (lastMsg && lastMsg.type === 'ai') {
+                lastMsg.isStreaming = false;
+                lastMsg.confidence = data.confidence;
+                lastMsg.sources = data.sources;
+                lastMsg.metadata = data.metadata;
+              }
+              return newChat;
+            });
+          }
+        });
       } catch (err) {
-        setChat((prev) => [...prev, { type: 'ai', content: getFriendlyError(err) }]);
+        setChat((prev) => {
+          const newChat = [...prev];
+          const lastMsg = newChat[newChat.length - 1];
+          if (lastMsg && lastMsg.type === 'ai') {
+            lastMsg.content = lastMsg.content || getFriendlyError(err);
+            lastMsg.isStreaming = false;
+          }
+          return newChat;
+        });
       } finally {
         setLoading(false);
       }
     },
-    [message]
+    [message, chat] // Note: chat is now a dependency because of chatHistory
   );
 
   const uploadDocument = useCallback(async (files) => {

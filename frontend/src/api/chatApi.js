@@ -8,10 +8,56 @@ export const chatApi = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
-export async function postChatMessage(message) {
+export async function postChatMessage(message, chatHistory = []) {
   // Use /rag instead of /chat to connect to the improved RAG endpoint that supports uploaded docs!
-  const res = await chatApi.post('/rag', { message });
+  const res = await chatApi.post('/rag', { message, chatHistory, stream: false });
   return res.data;
+}
+
+export async function postChatMessageStream(message, chatHistory = [], onData) {
+  const url = `${baseURL}/rag`;
+  
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message, chatHistory, stream: true })
+  });
+
+  if (!response.ok) {
+    let errorMessage = 'Network error';
+    try {
+      const errData = await response.json();
+      errorMessage = errData.error || errorMessage;
+    } catch (e) {
+      errorMessage = response.statusText;
+    }
+    throw new Error(errorMessage);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder('utf-8');
+  let buffered = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffered += decoder.decode(value, { stream: true });
+    const lines = buffered.split('\n\n');
+    buffered = lines.pop();
+
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        const dataStr = line.slice(6);
+        try {
+          const data = JSON.parse(dataStr);
+          onData(data);
+        } catch (e) {
+          console.error('SSE JSON parse error', e);
+        }
+      }
+    }
+  }
 }
 
 export async function postDocumentUpload(files) {

@@ -1,10 +1,15 @@
 const { isGroqReady } = require('../config/groq');
-const { initRag, isRagReady, answerWithRag } = require('../services/ragService');
+const { initRag, isRagReady, answerWithRag, answerWithRagStream, evaluateRagResponse } = require('../services/ragService');
 
 /**
  * POST /rag endpoint handler
  * Receives a question and returns an answer grounded in the knowledge base
  * 
+ * Request body:
+ * - message: string (The question)
+ * - chatHistory: array (Optional previous messages for conversational memory)
+ * - stream: boolean (Optional, if true uses SSE to stream response)
+ *
  * Response includes:
  * - reply: The answer text
  * - confidence: Confidence score (0-1)
@@ -13,7 +18,7 @@ const { initRag, isRagReady, answerWithRag } = require('../services/ragService')
  */
 async function postRag(req, res) {
   try {
-    const { message } = req.body;
+    const { message, chatHistory = [], stream = false } = req.body;
 
     // Validation: Check message input
     if (!message || typeof message !== 'string') {
@@ -39,27 +44,67 @@ async function postRag(req, res) {
       });
     }
 
-    // Call the improved RAG service (now returns structured response)
-    const result = await answerWithRag(message);
+    if (stream) {
+      // Setup SSE Headers
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
 
-    // Return enriched response with confidence and sources
-    return res.json({
-      reply: result.reply,
-      confidence: result.confidence,
-      sources: result.sources,
-      metadata: result.metadata,
-      statusCode: 200,
-    });
+      // Call streaming service
+      await answerWithRagStream(message, chatHistory, res);
+      res.end();
+    } else {
+      // Call the standard RAG service
+      const result = await answerWithRag(message, chatHistory);
+
+      // Return enriched response with confidence and sources
+      return res.json({
+        reply: result.reply,
+        confidence: result.confidence,
+        sources: result.sources,
+        metadata: result.metadata,
+        statusCode: 200,
+      });
+    }
   } catch (error) {
     console.error('❌ Error in /rag:', error.message || error);
-    return res.status(500).json({
-      error: 'Error processing RAG request: ' + (error.message || 'Please try again.'),
-      statusCode: 500,
-    });
+    
+    // Fallback for non-streaming headers sent error
+    if (!res.headersSent) {
+      return res.status(500).json({
+        error: 'Error processing RAG request: ' + (error.message || 'Please try again.'),
+        statusCode: 500,
+      });
+    }
+  }
+}
+
+/**
+ * POST /rag/evaluate endpoint handler
+ * Evaluates the RAG response faithfulness
+ */
+async function postEvaluate(req, res) {
+  try {
+    const { question, answer, contextDocs } = req.body;
+
+    if (!question || !answer || !contextDocs) {
+      return res.status(400).json({ error: 'question, answer, and contextDocs are required' });
+    }
+
+    const evaluation = await evaluateRagResponse(question, answer, contextDocs);
+    if (!evaluation) {
+      return res.status(500).json({ error: 'Failed to evaluate response' });
+    }
+
+    return res.json(evaluation);
+  } catch (error) {
+    console.error('❌ Error in /rag/evaluate:', error);
+    return res.status(500).json({ error: 'Error running evaluation' });
   }
 }
 
 module.exports = {
   postRag,
+  postEvaluate,
   initRag,
 };
