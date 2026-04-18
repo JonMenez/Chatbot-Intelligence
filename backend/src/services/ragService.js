@@ -35,7 +35,7 @@ const SPLITTER_CONFIG = {
 // Vector retrieval configuration
 const RETRIEVAL_CONFIG = {
   k: 5,                  // Retrieve top-5 chunks instead of 4 for richer context
-  scoreThreshold: 0.75,  // NotebookLM Suggestion: Similarity score threshold (ignore < 0.75)
+  scoreThreshold: 0.20,  // Lowered from 0.75 because local MiniLM embeddings yield lower cosine scores (~0.3)
 };
 
 // LLM parameters for RAG
@@ -298,67 +298,64 @@ async function initRag({ maxRetries = 3, initialDelayMs = 1500 } = {}) {
         const client = new ChromaClient({ path: CHROMA_URL });
 
         if (resetDb) {
-          logger.warn(`RESET_CHROMA_DB is true. Deleting collection '${COLLECTION_NAME}'...`);
+          logger.warn(`RESET_CHROMA_DB is true. Eliminando colección '${COLLECTION_NAME}'...`);
           try {
             await client.deleteCollection({ name: COLLECTION_NAME });
-            logger.success(`Collection deleted.`);
+            logger.success(`Colección eliminada.`);
           } catch (e) {
-            logger.debug(`Collection did not exist or could not be deleted (normal on first startup).`);
+            logger.debug(`Colección no existía o no se pudo eliminar (es normal en el primer inicio).`);
           }
           shouldIngest = true;
         } else {
-          // Check if collection exists and has documents
           try {
             const collection = await client.getCollection({ name: COLLECTION_NAME });
             const count = await collection.count();
             if (count > 0) {
-              logger.info(`ChromaDB collection '${COLLECTION_NAME}' already contains ${count} chunks. Skipping initial ingestion.`);
+              logger.info(`ChromaDB collection '${COLLECTION_NAME}' ya contiene ${count} chunks. Omitiendo ingesta inicial.`);
               totalChunksGenerated = count;
               shouldIngest = false;
             } else {
               shouldIngest = true;
             }
           } catch (e) {
-            // Collection doesn't exist yet
             shouldIngest = true;
           }
         }
       } catch (err) {
-        logger.warn(`Could not connect to ChromaDB at ${CHROMA_URL}. Is Docker running?`);
+        logger.warn(`No se pudo conectar a ChromaDB en ${CHROMA_URL}. ¿Está corriendo Docker?`);
         throw new Error(`ChromaDB connection failed: ${err.message}`);
       }
 
       if (shouldIngest) {
-        logger.info('Loading documents for initial ChromaDB ingestion...');
-        // Step 1: Load documents
+        logger.info('Cargando documentos para la ingesta inicial en ChromaDB...');
         const rawDocs = await loadDocumentsFromFolder(DOCUMENTS_DIR);
         if (rawDocs.length > 0) {
-          // Step 2: Chunk documents
           const docs = await chunkDocuments(rawDocs);
           if (docs.length > 0) {
-            logger.info('Saving chunks to persistent ChromaDB database...');
+            logger.info('Guardando chunks en la base de datos persistente ChromaDB...');
             await Chroma.fromDocuments(docs, embeddings, {
               collectionName: COLLECTION_NAME,
               url: CHROMA_URL,
+              collectionMetadata: { "hnsw:space": "cosine" }
             });
-            logger.success(`Initial ingestion successful: ${docs.length} chunks added to ChromaDB.`);
+            logger.success(`Ingesta inicial exitosa: ${docs.length} chunks agregados a ChromaDB.`);
           } else {
             logger.warn('No chunks generated from documents.');
           }
         } else {
-          logger.warn('No documents found in documents folder. Database will start empty.');
+          logger.warn('No documents found in documents folder. La base de datos iniciará vacía.');
         }
       }
 
-      // Instantiate the source database by connecting to the Chroma server
-      logger.info('Connecting vector store with Chroma...');
+      logger.info('Conectando store vectorial con Chroma...');
       vectorStore = new Chroma(embeddings, {
         collectionName: COLLECTION_NAME,
         url: CHROMA_URL,
+        collectionMetadata: { "hnsw:space": "cosine" }
       });
 
       ragReady = true;
-      logger.success(`RAG (ChromaDB) successfully initialized.`);
+      logger.success(`RAG (ChromaDB) inicializado correctamente.`);
       return;
     } catch (error) {
       ragReady = false;
@@ -546,14 +543,14 @@ async function answerWithRag(message, chatHistory = []) {
   }
 
   try {
-    // STEP 1: Retrieve relevant documents (using .similaritySearchWithScore for ChromaDB)
+    // STEP 1: Retrieve relevant documents (using .similaritySearchWithScore for MemoryVectorStore)
     const vectorResults = await vectorStore.similaritySearchWithScore(message, RETRIEVAL_CONFIG.k);
     
     // Apply Similarity Score Filtering rule
-    // LangChain Chroma usually returns distance (L2 or Cosine). Converting distance to similarity (1 - distance)
-    const scoredDocs = vectorResults.map(([doc, distance]) => ({
+    // LangChain MemoryVectorStore directly provides cosine similarity score (1 being exactly identical)
+    const scoredDocs = vectorResults.map(([doc, score]) => ({
       doc,
-      similarity: 1 - distance
+      similarity: score
     }));
 
     // Filter documents strictly by threshold
@@ -658,12 +655,22 @@ async function answerWithRagStream(message, chatHistory = [], res) {
     // STEP 1: Retrieve relevant documents
     const vectorResults = await vectorStore.similaritySearchWithScore(message, RETRIEVAL_CONFIG.k);
     
-    const scoredDocs = vectorResults.map(([doc, distance]) => ({
+    logger.debug(`[answerWithRagStream] Raw vectorResults for query: "${message}"`);
+    vectorResults.forEach(([doc, score], i) => {
+      logger.debug(`[answerWithRagStream] Match ${i+1}: Source="${doc.metadata.source}" | Score=${score.toFixed(3)}`);
+    });
+
+    const scoredDocs = vectorResults.map(([doc, score]) => ({
       doc,
-      similarity: 1 - distance
+      similarity: score
     }));
 
-    const filteredDocs = scoredDocs.filter((item) => item.similarity >= RETRIEVAL_CONFIG.scoreThreshold);
+    const filteredDocs = scoredDocs.filter((item) => {
+      const passed = item.similarity >= RETRIEVAL_CONFIG.scoreThreshold;
+      if (!passed) logger.debug(`[answerWithRagStream] ❌ Filtered OUT Source="${item.doc.metadata.source}" (Score ${item.similarity.toFixed(3)} < Threshold ${RETRIEVAL_CONFIG.scoreThreshold})`);
+      else logger.debug(`[answerWithRagStream] ✅ Filtered IN Source="${item.doc.metadata.source}" (Score ${item.similarity.toFixed(3)} >= Threshold)`);
+      return passed;
+    });
     let relevantDocs = filteredDocs.map((item) => item.doc);
     const retrievalTime = Date.now() - startTime;
 
@@ -831,6 +838,7 @@ async function addDocumentToVectorStore(filePath, originalName) {
   // Insert into ChromaDB store (will be persisted in DB via HTTP)
   await vectorStore.addDocuments(docs);
   logger.success(`Dynamically added ${originalName}: ${docs.length} chunks added`);
+  docs.forEach((d, i) => logger.debug(`[addDocumentToVectorStore] Chunk ${i} preview: "${d.pageContent.substring(0, 50).replace(/\n/g, ' ')}..."`));
 
   return {
     source: originalName,

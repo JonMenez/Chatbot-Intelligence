@@ -73,9 +73,11 @@ export function useChat({ initialChat } = {}) {
           if (data.chunk) {
             setChat((prev) => {
               const newChat = [...prev];
-              const lastMsg = newChat[newChat.length - 1];
+              const lastMsgIndex = newChat.length - 1;
+              const lastMsg = newChat[lastMsgIndex];
               if (lastMsg && lastMsg.type === 'ai') {
-                lastMsg.content += data.chunk;
+                // Must clone the object to avoid StrictMode double-mutation
+                newChat[lastMsgIndex] = { ...lastMsg, content: lastMsg.content + data.chunk };
               }
               return newChat;
             });
@@ -83,12 +85,16 @@ export function useChat({ initialChat } = {}) {
           if (data.done) {
             setChat((prev) => {
               const newChat = [...prev];
-              const lastMsg = newChat[newChat.length - 1];
+              const lastMsgIndex = newChat.length - 1;
+              const lastMsg = newChat[lastMsgIndex];
               if (lastMsg && lastMsg.type === 'ai') {
-                lastMsg.isStreaming = false;
-                lastMsg.confidence = data.confidence;
-                lastMsg.sources = data.sources;
-                lastMsg.metadata = data.metadata;
+                newChat[lastMsgIndex] = {
+                  ...lastMsg,
+                  isStreaming: false,
+                  confidence: data.confidence,
+                  sources: data.sources,
+                  metadata: data.metadata,
+                };
               }
               return newChat;
             });
@@ -97,10 +103,14 @@ export function useChat({ initialChat } = {}) {
       } catch (err) {
         setChat((prev) => {
           const newChat = [...prev];
-          const lastMsg = newChat[newChat.length - 1];
+          const lastMsgIndex = newChat.length - 1;
+          const lastMsg = newChat[lastMsgIndex];
           if (lastMsg && lastMsg.type === 'ai') {
-            lastMsg.content = lastMsg.content || getFriendlyError(err);
-            lastMsg.isStreaming = false;
+            newChat[lastMsgIndex] = { 
+              ...lastMsg, 
+              isStreaming: false, 
+              content: 'Error: ' + getFriendlyError(err) 
+            };
           }
           return newChat;
         });

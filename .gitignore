@@ -25,3 +25,6 @@ frontend/dist/
 
 # Backend
 backend/node_modules/
+
+# Documents
+documents
