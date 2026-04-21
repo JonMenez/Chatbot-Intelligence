@@ -85,13 +85,13 @@ async function postRag(req, res) {
  */
 async function postEvaluate(req, res) {
   try {
-    const { question, answer, contextDocs } = req.body;
+    const { question, answer, contextDocs, expectedAnswer = "" } = req.body;
 
     if (!question || !answer || !contextDocs) {
       return res.status(400).json({ error: 'question, answer, and contextDocs are required' });
     }
 
-    const evaluation = await evaluateRagResponse(question, answer, contextDocs);
+    const evaluation = await evaluateRagResponse(question, answer, contextDocs, expectedAnswer);
     if (!evaluation) {
       return res.status(500).json({ error: 'Failed to evaluate response' });
     }
