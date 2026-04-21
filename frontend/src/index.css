@@ -1,15 +1,60 @@
 @import "tailwindcss";
 
 @theme {
-  --color-background: var(--bg);
-  --color-on-surface: var(--text);
-  --color-on-surface-variant: rgba(156, 163, 175, 0.45);
-  --color-primary: var(--accent);
-  --color-on-primary: var(--text-h);
+  /* ==========================================================================
+     The Ethereal Intelligence - Color Tokens
+     ========================================================================== */
+  
+  /* Core Backgrounds */
+  --color-background: #131315;
+  --color-on-background: #e5e1e4;
+  
+  /* Surface Tiers (Depth) */
+  --color-surface: #131315;
+  --color-surface-dim: #131315;
+  --color-surface-bright: #39393b;
+  --color-surface-container-lowest: #0e0e10;
+  --color-surface-container-low: #1b1b1d;
+  --color-surface-container: #201f21;
+  --color-surface-container-high: #2a2a2c;
+  --color-surface-container-highest: #353437;
+  --color-surface-variant: #353437;
+  --color-on-surface: #e5e1e4;
+  --color-on-surface-variant: #bac9c9;
 
+  /* Primary Accent (Glow Teal) */
+  --color-primary: #59e7fc;
+  --color-on-primary: #00363d;
+  --color-primary-container: #30cbdf;
+  --color-on-primary-container: #00525b;
+  --color-primary-fixed: #98f0ff;
+  --color-primary-fixed-dim: #45d8ed;
+  --color-on-primary-fixed: #001f24;
+  --color-on-primary-fixed-variant: #004f58;
+
+  /* Ghost Borders */
+  --color-outline: #859493;
+  --color-outline-variant: #3b4949;
+
+  /* Semantic Colors */
+  --color-error: #ffb4ab;
+  --color-on-error: #690005;
+  --color-error-container: #93000a;
+  --color-on-error-container: #ffdad6;
+
+  /* ==========================================================================
+     Typography
+     ========================================================================== */
+  --font-display: 'Manrope', sans-serif;
+  --font-headline: 'Manrope', sans-serif;
+  --font-body: 'Manrope', sans-serif;
+  --font-label: 'Inter', sans-serif;
+
+  /* ==========================================================================
+     Animations
+     ========================================================================== */
   --animate-fade-in: fade-in 0.6s ease-out forwards;
-  --animate-bounce-custom: bounceCustom 1s infinite;
-  --animate-pulse-soft: pulseSoft 2s infinite;
+  --animate-pulse-glow: pulse-glow 4s infinite;
 
   @keyframes fade-in {
     from {
@@ -22,86 +67,150 @@
     }
   }
 
-  @keyframes bounceCustom {
-    0%, 80%, 100% { transform: scale(1); opacity: 0.5; }
-    40% { transform: scale(1.15); opacity: 1; }
-  }
-
-  @keyframes pulseSoft {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.55; }
-  }
-}
-
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-html, body {
-  height: 100%;
-}
-
-:root {
-  --text: #374151;
-  --text-h: #111827;
-  --bg: #ffffff;
-  --border: #e5e7eb;
-  --code-bg: #f3f4f6;
-  --accent: #a855f7;
-  --accent-bg: rgba(168, 85, 247, 0.15);
-  --accent-border: rgba(168, 85, 247, 0.5);
-  --social-bg: rgba(243, 244, 246, 0.5);
-  --shadow: rgba(0, 0, 0, 0.1) 0 4px 6px -1px, rgba(0, 0, 0, 0.06) 0 2px 4px -1px;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --social-bg: rgba(47, 48, 58, 0.5);
-    --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
-  }
-
-  #social .button-icon {
-    filter: invert(1) brightness(2);
+  @keyframes pulse-glow {
+    0%, 100% {
+      opacity: 1;
+      transform: scale(1);
+      box-shadow: 0 0 10px rgba(89, 231, 252, 0.3);
+    }
+    50% {
+      opacity: 0.8;
+      transform: scale(1.05);
+      box-shadow: 0 0 25px rgba(89, 231, 252, 0.6);
+    }
   }
 }
 
-body {
-  background-color: var(--bg);
-  color: var(--text);
+/* ==========================================================================
+   Base Styles & Utilities
+   ========================================================================== */
+@layer base {
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  html, body {
+    height: 100%;
+    background-color: var(--color-background);
+    color: var(--color-on-surface);
+    font-family: var(--font-body);
+  }
+
+  #root {
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
+    text-align: initial;
+    min-height: 100svh;
+    display: flex;
+    flex-direction: column;
+  }
 }
 
-#root {
-  width: 100%;
-  max-width: 100%;
-  margin: 0;
-  text-align: initial;
-  min-height: 100svh;
-  display: flex;
-  flex-direction: column;
+@layer utilities {
+  /* Glass Panel / Glassmorphism */
+  .glass-panel {
+    background-color: rgba(53, 52, 55, 0.6); /* surface-variant at ~60% */
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+  }
+
+  /* Ghost Borders */
+  .ghost-border {
+    border: 1px solid rgba(59, 73, 73, 0.15); /* outline-variant at 15% */
+  }
+
+  /* Text Glow */
+  .text-glow {
+    text-shadow: 0 0 20px rgba(89, 231, 252, 0.3);
+  }
+
+  /* Primary Accent Glow (for hover/focus states) */
+  .primary-glow {
+    box-shadow: 0 0 20px rgba(89, 231, 252, 0.3);
+  }
+
+  /* Typography Scale Overrides */
+  .text-display-lg {
+    font-family: var(--font-display);
+    font-size: 3.5rem;
+    line-height: 1.1;
+  }
+
+  .text-headline-md {
+    font-family: var(--font-headline);
+    font-size: 1.75rem;
+    font-weight: 500;
+  }
+
+  .text-label-md {
+    font-family: var(--font-label);
+    font-size: 0.75rem;
+    letter-spacing: 0.05em;
+  }
 }
 
-code,
-.counter {
+/* Markdown formatting overriders */
+code, .counter {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   display: inline-flex;
   border-radius: 4px;
-  color: var(--text-h);
+  color: var(--color-primary-fixed);
 }
 
 code {
   font-size: 15px;
   line-height: 135%;
   padding: 4px 8px;
-  background: var(--code-bg);
+  background: var(--color-surface-container);
+}
+
+/* ==========================================================================
+   Ethereal Ambience (Backgrounds & Stages)
+   ========================================================================== */
+.ethereal-stage {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 80% 60% at 50% -10%, rgba(89, 231, 252, 0.07), transparent 55%),
+    radial-gradient(circle at 18% 22%, rgba(52, 61, 150, 0.18), transparent 42%),
+    radial-gradient(circle at 82% 78%, rgba(89, 231, 252, 0.06), transparent 45%),
+    repeating-radial-gradient(circle at 50% 120%, transparent 0, transparent 48px, rgba(255, 255, 255, 0.012) 48px, rgba(255, 255, 255, 0.012) 49px);
+}
+
+.ethereal-ambient {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(100px);
+  pointer-events: none;
+  opacity: 0.9;
+}
+
+.ethereal-ambient--a {
+  top: 18%;
+  left: 12%;
+  width: min(400px, 70vw);
+  height: min(400px, 70vw);
+  background: rgba(89, 231, 252, 0.06);
+}
+
+.ethereal-ambient--b {
+  bottom: 16%;
+  right: 8%;
+  width: min(360px, 65vw);
+  height: min(360px, 65vw);
+  background: rgba(52, 61, 150, 0.12);
+}
+
+.ethereal-orb {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: radial-gradient(circle at 30% 30%, var(--color-primary), transparent 70%);
+  box-shadow: 0 0 14px rgba(89, 231, 252, 0.55);
 }

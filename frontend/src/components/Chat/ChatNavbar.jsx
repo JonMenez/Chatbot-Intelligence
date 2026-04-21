@@ -1,6 +1,6 @@
 export function ChatNavbar({ shellClassName }) {
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 border-b border-[rgba(59,73,73,0.15)] bg-[rgba(19,19,21,0.82)] backdrop-blur-xl">
+    <nav className="fixed top-0 left-0 right-0 z-50 ghost-border border-x-0 border-t-0 bg-background/80 backdrop-blur-xl">
       <div className={`flex justify-between items-center gap-4 py-4 ${shellClassName}`}>
         <div className="flex items-center gap-3 min-w-0 flex-1">
           <span className="ethereal-orb" aria-hidden />
@@ -10,8 +10,7 @@ export function ChatNavbar({ shellClassName }) {
           >
             <span className="text-on-surface">Chatbot</span>
             <span
-              className="text-primary"
-              style={{ textShadow: '0 0 14px rgba(89, 231, 252, 0.35)' }}
+              className="text-primary text-glow"
             >
               {' '}
               AI

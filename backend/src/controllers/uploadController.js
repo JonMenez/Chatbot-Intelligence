@@ -106,7 +106,36 @@ async function postUpload(req, res) {
   }
 }
 
+/**
+ * Retrieve list of all uploaded documents
+ */
+async function getDocuments(req, res) {
+  try {
+    const registry = await registryService.loadRegistry();
+    const files = fs.readdirSync(DOCUMENTS_DIR);
+    
+    const documents = files
+      .filter(f => f !== '_registry.json')
+      .map(file => {
+        const filePath = path.join(DOCUMENTS_DIR, file);
+        const stats = fs.statSync(filePath);
+        return {
+          id: file,
+          filename: registry[file] || file,
+          size: stats.size,
+          createdAt: stats.birthtime,
+        };
+      });
+      
+    return res.status(200).json({ success: true, documents });
+  } catch (error) {
+    console.error('Error fetching documents:', error);
+    return res.status(500).json({ success: false, error: 'Failed to fetch documents' });
+  }
+}
+
 module.exports = {
   uploadMiddleware,
-  postUpload
+  postUpload,
+  getDocuments
 };

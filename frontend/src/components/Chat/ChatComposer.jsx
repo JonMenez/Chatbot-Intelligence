@@ -21,7 +21,7 @@ export function ChatComposer({ message, setMessage, loading, uploading, uploaded
             {uploadedFiles.map((filename, i) => (
               <div
                 key={i}
-                className="px-3 py-1.5 rounded-full border border-white/5 bg-[rgba(20,20,22,0.6)] backdrop-blur-md text-[10px] text-on-surface-variant font-medium tracking-wide hover:bg-white/5 hover:text-on-surface transition-all duration-300 font-mono shadow-sm cursor-default"
+                className="px-3 py-1.5 rounded-full border border-white/5 glass-panel text-[10px] text-on-surface-variant font-medium tracking-wide hover:bg-white/5 hover:text-on-surface transition-all duration-300 font-mono shadow-sm cursor-default"
                 title="Document loaded in Vector Store"
               >
                 📄 {filename}
@@ -41,7 +41,7 @@ export function ChatComposer({ message, setMessage, loading, uploading, uploaded
 
         <form
           onSubmit={onSubmit}
-          className="flex items-center gap-1.5 sm:gap-2 pl-5 pr-1.5 py-1.5 rounded-full border border-[rgba(59,73,73,0.15)] bg-[rgba(27,27,29,0.72)] backdrop-blur-[40px] shadow-[0_0_0_1px_rgba(89,231,252,0.12),0_16px_40px_rgba(0,0,0,0.45)]"
+          className="flex items-center gap-1.5 sm:gap-2 pl-5 pr-1.5 py-1.5 rounded-[1.5rem] ghost-border glass-panel shadow-lg focus-within:primary-glow transition-all duration-300"
         >
           <input
             type="text"
@@ -69,7 +69,7 @@ export function ChatComposer({ message, setMessage, loading, uploading, uploaded
           <button
             type="submit"
             disabled={loading || uploading || !message.trim()}
-            className="w-10 h-10 shrink-0 rounded-full flex items-center justify-center text-on-primary font-headline text-lg font-extrabold leading-none hover:scale-105 active:scale-95 transition-all duration-300 disabled:opacity-45 disabled:hover:scale-100 bg-[linear-gradient(135deg,var(--ethereal-primary),var(--ethereal-primary-container))] shadow-[0_0_16px_rgba(89,231,252,0.35),0_4px_12px_rgba(0,0,0,0.35)]"
+            className="w-10 h-10 shrink-0 rounded-full flex items-center justify-center text-on-primary font-headline text-lg font-extrabold leading-none hover:scale-105 active:scale-95 transition-all duration-300 disabled:opacity-45 disabled:hover:scale-100 bg-[linear-gradient(135deg,var(--color-primary),var(--color-primary-container))] primary-glow"
             aria-label="Send"
           >
             ›
@@ -82,4 +82,3 @@ export function ChatComposer({ message, setMessage, loading, uploading, uploaded
     </div>
   );
 }
-
