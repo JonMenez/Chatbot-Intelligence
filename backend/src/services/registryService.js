@@ -41,6 +41,7 @@ async function getOriginalName(diskFilename) {
 }
 
 module.exports = {
+  loadRegistry,
   registerDocumentMapping,
   getOriginalName,
 };
