@@ -28,3 +28,6 @@ backend/node_modules/
 
 # Documents
 documents
+
+# agentic-stack
+.agent/memory/.index/
