@@ -9,8 +9,9 @@
 - Name: Rick
 
 ## Code style
-- Language(s): javascript, typescript, reac.js, node.js,  LangChain.js
+- Language(s): javascript, typescript, react.js, node.js, LangChain.js
 - Explanations: detailed
+- Language standard: Always write code, variable names, documentation, and comments in American English.
 
 ## Workflow
 - Test strategy: tdd
