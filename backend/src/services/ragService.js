@@ -847,6 +847,34 @@ async function addDocumentToVectorStore(filePath, originalName) {
   };
 }
 
+/**
+ * Raw similarity search for Agent Tool use.
+ * Returns formatted context string instead of passing to LLM.
+ * @param {string} query
+ * @returns {Promise<string>} Formatted search results
+ */
+async function rawSimilaritySearch(query) {
+  if (!isRagReady()) return "Error: RAG is not initialized. No documents available.";
+  try {
+    const vectorResults = await vectorStore.similaritySearchWithScore(query, RETRIEVAL_CONFIG.k);
+    const scoredDocs = vectorResults.map(([doc, score]) => ({ doc, similarity: score }));
+    const filteredDocs = scoredDocs.filter((item) => item.similarity >= RETRIEVAL_CONFIG.scoreThreshold);
+    
+    if (filteredDocs.length === 0) {
+      return "No relevant information found in the knowledge base for this query.";
+    }
+    
+    return filteredDocs.map((item) => {
+      const source = item.doc.metadata.source;
+      const chunk = item.doc.metadata.chunk > 0 ? `, Chunk ${item.doc.metadata.chunk}` : '';
+      return `[Source: ${source}${chunk}]\n${item.doc.pageContent}`;
+    }).join('\n\n---\n\n');
+  } catch (error) {
+    logger.error(`Error in rawSimilaritySearch: ${error.message}`);
+    return `Error searching knowledge base: ${error.message}`;
+  }
+}
+
 // ============================================================================
 // EXPORTS
 // ============================================================================
@@ -858,6 +886,7 @@ module.exports = {
   answerWithRagStream,
   evaluateRagResponse,
   addDocumentToVectorStore,
+  rawSimilaritySearch,
   // Exposed for testing/debugging:
   loadDocumentsFromFolder,
   chunkDocuments,
