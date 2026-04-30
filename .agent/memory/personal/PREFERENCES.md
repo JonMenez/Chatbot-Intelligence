@@ -11,7 +11,7 @@
 ## Code style
 - Language(s): javascript, typescript, react.js, node.js, LangChain.js
 - Explanations: detailed
-- Language standard: Always write code, variable names, documentation, and comments in American English.
+- Language standard: ALWAYS write code, variable names, documentation, comments, and COMMUNICATE with the user in English. NO SPANISH.
 
 ## Workflow
 - Test strategy: tdd

@@ -847,6 +847,28 @@ async function addDocumentToVectorStore(filePath, originalName) {
   };
 }
 
+/**
+ * Performs a search in the vector store and applies thresholding.
+ * Extracted for Agent Tool usage.
+ * @param {string} query - The search query
+ * @returns {Promise<Array>} Array of relevant documents
+ */
+async function searchKnowledgeBase(query) {
+  if (!isRagReady()) {
+    throw new Error('RAG is not initialized. Please add documents to backend/documents folder and restart the server.');
+  }
+
+  const vectorResults = await vectorStore.similaritySearchWithScore(query, RETRIEVAL_CONFIG.k);
+  
+  const scoredDocs = vectorResults.map(([doc, score]) => ({
+    doc,
+    similarity: score
+  }));
+
+  const filteredDocs = scoredDocs.filter((item) => item.similarity >= RETRIEVAL_CONFIG.scoreThreshold);
+  return filteredDocs.map((item) => item.doc);
+}
+
 // ============================================================================
 // EXPORTS
 // ============================================================================
@@ -858,6 +880,7 @@ module.exports = {
   answerWithRagStream,
   evaluateRagResponse,
   addDocumentToVectorStore,
+  searchKnowledgeBase,
   // Exposed for testing/debugging:
   loadDocumentsFromFolder,
   chunkDocuments,
