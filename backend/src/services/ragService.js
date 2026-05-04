@@ -515,6 +515,35 @@ function calculateConfidence(relevantDocs, reply) {
 // ============================================================================
 
 /**
+ * Searches the ChromaDB vector store for relevant documents given a query.
+ * Exposed for Agent tools.
+ * @param {string} query - The search query
+ * @param {number} k - Number of chunks to retrieve
+ * @returns {Promise<Array>} Filtered document chunks with scores
+ */
+async function searchKnowledgeBase(query, k = RETRIEVAL_CONFIG.k) {
+  if (!isRagReady()) {
+    throw new Error('Vector store is not initialized yet.');
+  }
+  
+  const vectorResults = await vectorStore.similaritySearchWithScore(query, k);
+  
+  // Apply Similarity Score Filtering rule
+  const scoredDocs = vectorResults.map(([doc, score]) => ({
+    doc,
+    similarity: score
+  }));
+
+  // Filter documents strictly by threshold
+  const filteredDocs = scoredDocs.filter((item) => {
+    const passed = item.similarity >= RETRIEVAL_CONFIG.scoreThreshold;
+    return passed;
+  });
+
+  return filteredDocs.map(item => item.doc);
+}
+
+/**
  * Answer a question using the RAG pipeline (Standard Non-Streaming)
  * IMPROVEMENT #1, #2, #3, #4: All improvements integrated here
  *
@@ -858,6 +887,7 @@ module.exports = {
   answerWithRagStream,
   evaluateRagResponse,
   addDocumentToVectorStore,
+  searchKnowledgeBase, // Exported for Agent Tool Pattern
   // Exposed for testing/debugging:
   loadDocumentsFromFolder,
   chunkDocuments,
