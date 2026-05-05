@@ -68,16 +68,16 @@ function MessageBubbleUser({ content }) {
   );
 }
 
-function ChatLoadingBubble() {
+function ChatLoadingBubble({ statusMessage = "Ethereal is thinking..." }) {
   return (
-    <div className="flex flex-col gap-2 items-start max-w-[min(85%,36rem)]">
+    <div className="flex flex-col gap-2 items-start max-w-[min(85%,36rem)] animate-fade-in">
       <div className="flex items-center gap-2 mb-1 px-1">
         <div className="w-1.5 h-1.5 rounded-full bg-primary shrink-0 animate-pulse-glow" />
         <span className="font-label text-[10px] uppercase tracking-[0.14em] text-primary/85 font-semibold">
           Intelligence
         </span>
       </div>
-      <div className="message-ai px-5 py-3.5 rounded-[2rem] ghost-border glass-panel shadow-[inset_0_2px_10px_rgba(255,255,255,0.03)]">
+      <div className="message-ai px-5 py-3.5 rounded-[2rem] ghost-border glass-panel shadow-[inset_0_2px_10px_rgba(255,255,255,0.03)] flex items-center gap-4">
         <div className="flex gap-2">
           {[0, 200, 400].map((delay) => (
             <div
@@ -87,6 +87,11 @@ function ChatLoadingBubble() {
             />
           ))}
         </div>
+        {statusMessage && (
+          <span className="text-[14px] font-medium text-on-surface-variant/80 tracking-wide font-body">
+            {statusMessage}
+          </span>
+        )}
       </div>
     </div>
   );
@@ -99,9 +104,9 @@ export function ChatMessageList({ chat, loading, messagesEndRef }) {
   return (
     <div className="relative space-y-8">
       {chat.map((msg, idx) => {
-        // Hide the empty placeholder message while we are showing the loader
+        // Show loading bubble with dynamic text for streaming messages that haven't received actual content yet
         if (msg.type === 'ai' && msg.isStreaming && !msg.content) {
-          return null;
+          return <ChatLoadingBubble key={`loading-${idx}`} statusMessage={msg.agentStatus} />;
         }
 
         return (
@@ -118,8 +123,6 @@ export function ChatMessageList({ chat, loading, messagesEndRef }) {
           </div>
         );
       })}
-
-      {isWaitingForFirstChunk && <ChatLoadingBubble />}
 
       <div ref={messagesEndRef} />
     </div>

@@ -61,8 +61,8 @@ export function useChat({ initialChat } = {}) {
       // Immediately add User message to UI
       setChat((prev) => [...prev, { type: 'user', content: userMsg }]);
       
-      // Placeholder for AI streaming response
-      setChat((prev) => [...prev, { type: 'ai', content: '', isStreaming: true }]);
+      // Placeholder for AI streaming response with initial agent status
+      setChat((prev) => [...prev, { type: 'ai', content: '', isStreaming: true, agentStatus: 'Initializing neural link...' }]);
       setLoading(true);
 
       try {
@@ -70,19 +70,36 @@ export function useChat({ initialChat } = {}) {
           if (data.error) {
             throw new Error(data.error);
           }
-          if (data.chunk) {
+          
+          if (data.type === 'thinking') {
+             setChat((prev) => {
+               const newChat = [...prev];
+               newChat[newChat.length - 1] = { ...newChat[newChat.length - 1], agentStatus: 'Analyzing context...' };
+               return newChat;
+             });
+          }
+          
+          if (data.type === 'tool_call') {
+             setChat((prev) => {
+               const newChat = [...prev];
+               newChat[newChat.length - 1] = { ...newChat[newChat.length - 1], agentStatus: 'Querying knowledge base...' };
+               return newChat;
+             });
+          }
+          
+          if (data.type === 'stream' && data.chunk) {
             setChat((prev) => {
               const newChat = [...prev];
               const lastMsgIndex = newChat.length - 1;
               const lastMsg = newChat[lastMsgIndex];
               if (lastMsg && lastMsg.type === 'ai') {
-                // Must clone the object to avoid StrictMode double-mutation
-                newChat[lastMsgIndex] = { ...lastMsg, content: lastMsg.content + data.chunk };
+                newChat[lastMsgIndex] = { ...lastMsg, content: lastMsg.content + data.chunk, agentStatus: null };
               }
               return newChat;
             });
           }
-          if (data.done) {
+          
+          if (data.type === 'final_response' && data.done) {
             setChat((prev) => {
               const newChat = [...prev];
               const lastMsgIndex = newChat.length - 1;
@@ -91,8 +108,7 @@ export function useChat({ initialChat } = {}) {
                 newChat[lastMsgIndex] = {
                   ...lastMsg,
                   isStreaming: false,
-                  confidence: data.confidence,
-                  sources: data.sources,
+                  agentStatus: null,
                   metadata: data.metadata,
                 };
               }

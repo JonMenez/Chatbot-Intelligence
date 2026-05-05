@@ -16,7 +16,7 @@ function createMainAgent() {
   // We use ChatGroq which natively supports tool calling
   const llm = new ChatGroq({
     apiKey: process.env.GROQ_API_KEY,
-    model: "llama-3.3-70b-versatile", // Fix: The property is 'model', not 'modelName'
+    model: "llama-3.1-8b-instant", // Fallback to 8b-instant to avoid Llama 3.3 XML tool calling bugs
     temperature: 0.1, // Keep it low for factual reliability
     maxTokens: 800,
   });
@@ -25,10 +25,8 @@ function createMainAgent() {
   const tools = [ragSearchTool];
 
   // 3. Create the System Prompt as a modifier
-  const systemMessage = new SystemMessage(`You are an intelligent, helpful AI Agent named Ethereal. 
-You answer the user's questions clearly and concisely.
-You have access to a knowledge base tool. Use it whenever the user asks about their documents, data, or facts.
-If the tool returns no information, politely inform the user that you don't know.`);
+  const systemMessage = new SystemMessage(`You are Ethereal, an intelligent AI Assistant.
+Answer the user's queries concisely and accurately. If you don't know the answer, just say so.`);
 
   // 4. Create the Tool Calling Agent using LangGraph prebuilt agent
   const agentExecutor = createReactAgent({

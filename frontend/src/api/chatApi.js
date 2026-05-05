@@ -15,12 +15,12 @@ export async function postChatMessage(message, chatHistory = []) {
 }
 
 export async function postChatMessageStream(message, chatHistory = [], onData) {
-  const url = `${baseURL}/rag`;
+  const url = `${baseURL}/agent/chat/stream`;
   
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, chatHistory, stream: true })
+    body: JSON.stringify({ message, chatHistory })
   });
 
   if (!response.ok) {
