@@ -298,12 +298,12 @@ async function initRag({ maxRetries = 3, initialDelayMs = 1500 } = {}) {
         const client = new ChromaClient({ path: CHROMA_URL });
 
         if (resetDb) {
-          logger.warn(`RESET_CHROMA_DB is true. Eliminando colección '${COLLECTION_NAME}'...`);
+          logger.warn(`RESET_CHROMA_DB is true. Deleting collection '${COLLECTION_NAME}'...`);
           try {
             await client.deleteCollection({ name: COLLECTION_NAME });
-            logger.success(`Colección eliminada.`);
+            logger.success(`Collection deleted.`);
           } catch (e) {
-            logger.debug(`Colección no existía o no se pudo eliminar (es normal en el primer inicio).`);
+            logger.debug(`Collection did not exist or could not be deleted (normal on first start).`);
           }
           shouldIngest = true;
         } else {
@@ -311,7 +311,7 @@ async function initRag({ maxRetries = 3, initialDelayMs = 1500 } = {}) {
             const collection = await client.getCollection({ name: COLLECTION_NAME });
             const count = await collection.count();
             if (count > 0) {
-              logger.info(`ChromaDB collection '${COLLECTION_NAME}' ya contiene ${count} chunks. Omitiendo ingesta inicial.`);
+              logger.info(`ChromaDB collection '${COLLECTION_NAME}' already contains ${count} chunks. Skipping initial ingestion.`);
               totalChunksGenerated = count;
               shouldIngest = false;
             } else {
@@ -322,32 +322,32 @@ async function initRag({ maxRetries = 3, initialDelayMs = 1500 } = {}) {
           }
         }
       } catch (err) {
-        logger.warn(`No se pudo conectar a ChromaDB en ${CHROMA_URL}. ¿Está corriendo Docker?`);
+        logger.warn(`Could not connect to ChromaDB at ${CHROMA_URL}. Is Docker running?`);
         throw new Error(`ChromaDB connection failed: ${err.message}`);
       }
 
       if (shouldIngest) {
-        logger.info('Cargando documentos para la ingesta inicial en ChromaDB...');
+        logger.info('Loading documents for initial ingestion in ChromaDB...');
         const rawDocs = await loadDocumentsFromFolder(DOCUMENTS_DIR);
         if (rawDocs.length > 0) {
           const docs = await chunkDocuments(rawDocs);
           if (docs.length > 0) {
-            logger.info('Guardando chunks en la base de datos persistente ChromaDB...');
+            logger.info('Saving chunks to persistent ChromaDB database...');
             await Chroma.fromDocuments(docs, embeddings, {
               collectionName: COLLECTION_NAME,
               url: CHROMA_URL,
               collectionMetadata: { "hnsw:space": "cosine" }
             });
-            logger.success(`Ingesta inicial exitosa: ${docs.length} chunks agregados a ChromaDB.`);
+            logger.success(`Initial ingestion successful: ${docs.length} chunks added to ChromaDB.`);
           } else {
             logger.warn('No chunks generated from documents.');
           }
         } else {
-          logger.warn('No documents found in documents folder. La base de datos iniciará vacía.');
+          logger.warn('No documents found in documents folder. The database will start empty.');
         }
       }
 
-      logger.info('Conectando store vectorial con Chroma...');
+      logger.info('Connecting vector store with Chroma...');
       vectorStore = new Chroma(embeddings, {
         collectionName: COLLECTION_NAME,
         url: CHROMA_URL,
@@ -355,7 +355,7 @@ async function initRag({ maxRetries = 3, initialDelayMs = 1500 } = {}) {
       });
 
       ragReady = true;
-      logger.success(`RAG (ChromaDB) inicializado correctamente.`);
+      logger.success(`RAG (ChromaDB) initialized successfully.`);
       return;
     } catch (error) {
       ragReady = false;

@@ -6,7 +6,7 @@ import { ChatMessageList } from '../components/Chat/ChatMessageList.jsx';
 
 export default function ChatPage() {
   const { shell } = useOutletContext();
-  const { message, setMessage, chat, loading, uploading, uploadedFiles, sendMessage, uploadDocument, messagesEndRef } = useChat();
+  const { mode, setMode, message, setMessage, chat, loading, uploading, uploadedFiles, sendMessage, uploadDocument, messagesEndRef } = useChat();
 
   return (
     <>
@@ -16,7 +16,7 @@ export default function ChatPage() {
         <div className="ethereal-ambient ethereal-ambient--a" aria-hidden />
         <div className="ethereal-ambient ethereal-ambient--b" aria-hidden />
 
-        <ChatHeader />
+        <ChatHeader mode={mode} setMode={setMode} />
 
         <ChatMessageList chat={chat} loading={loading} messagesEndRef={messagesEndRef} />
       </main>

@@ -5,7 +5,7 @@ const DEFAULT_INITIAL_CHAT = [
   {
     type: 'ai',
     content:
-      'Hello. I am your personalized intelligence interface. What shall we explore today on this second day of development?',
+      'Hello. I am your personalized intelligence interface. What shall we explore today?',
   },
 ];
 
@@ -33,6 +33,7 @@ export function useChat({ initialChat } = {}) {
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState([]);
+  const [mode, setMode] = useState('agent');
   const messagesEndRef = useRef(null);
 
   const scrollToBottom = useCallback(() => {
@@ -50,7 +51,7 @@ export function useChat({ initialChat } = {}) {
 
       const userMsg = message;
       setMessage('');
-      
+
       // We will prepare the chat history for memory (excluding the new message)
       // Only send valid message content, keeping it clean
       const chatHistory = chat.map(c => ({
@@ -60,34 +61,36 @@ export function useChat({ initialChat } = {}) {
 
       // Immediately add User message to UI
       setChat((prev) => [...prev, { type: 'user', content: userMsg }]);
-      
+
       // Placeholder for AI streaming response with initial agent status
-      setChat((prev) => [...prev, { type: 'ai', content: '', isStreaming: true, agentStatus: 'Initializing neural link...' }]);
+      const initialStatus = mode === 'agent' ? 'Initializing neural link...' : 'Querying RAG system...';
+      setChat((prev) => [...prev, { type: 'ai', content: '', isStreaming: true, agentStatus: initialStatus }]);
       setLoading(true);
 
       try {
-        await postChatMessageStream(userMsg, chatHistory, (data) => {
+        await postChatMessageStream(userMsg, chatHistory, mode, (data) => {
           if (data.error) {
             throw new Error(data.error);
           }
-          
+
           if (data.type === 'thinking') {
-             setChat((prev) => {
-               const newChat = [...prev];
-               newChat[newChat.length - 1] = { ...newChat[newChat.length - 1], agentStatus: 'Analyzing context...' };
-               return newChat;
-             });
+            setChat((prev) => {
+              const newChat = [...prev];
+              newChat[newChat.length - 1] = { ...newChat[newChat.length - 1], agentStatus: 'Analyzing context...' };
+              return newChat;
+            });
           }
-          
-          if (data.type === 'tool_call') {
-             setChat((prev) => {
-               const newChat = [...prev];
-               newChat[newChat.length - 1] = { ...newChat[newChat.length - 1], agentStatus: 'Querying knowledge base...' };
-               return newChat;
-             });
+
+          if (data.type === 'tool_call' && data.tool) {
+            setChat((prev) => {
+              const newChat = [...prev];
+              newChat[newChat.length - 1] = { ...newChat[newChat.length - 1], agentStatus: `Using tool: ${data.tool}...` };
+              return newChat;
+            });
           }
-          
-          if (data.type === 'stream' && data.chunk) {
+
+          // Compatibilidad: RAG antiguo solo manda data.chunk, Agente manda data.type === 'stream'
+          if (data.chunk) {
             setChat((prev) => {
               const newChat = [...prev];
               const lastMsgIndex = newChat.length - 1;
@@ -98,8 +101,9 @@ export function useChat({ initialChat } = {}) {
               return newChat;
             });
           }
-          
-          if (data.type === 'final_response' && data.done) {
+
+          // Compatibilidad: RAG manda data.done, Agente manda data.type === 'final_response' y data.done
+          if (data.done) {
             setChat((prev) => {
               const newChat = [...prev];
               const lastMsgIndex = newChat.length - 1;
@@ -109,7 +113,9 @@ export function useChat({ initialChat } = {}) {
                   ...lastMsg,
                   isStreaming: false,
                   agentStatus: null,
-                  metadata: data.metadata,
+                  confidence: data.confidence, // RAG specific
+                  sources: data.sources, // RAG specific
+                  metadata: data.metadata, // Agent specific
                 };
               }
               return newChat;
@@ -122,10 +128,10 @@ export function useChat({ initialChat } = {}) {
           const lastMsgIndex = newChat.length - 1;
           const lastMsg = newChat[lastMsgIndex];
           if (lastMsg && lastMsg.type === 'ai') {
-            newChat[lastMsgIndex] = { 
-              ...lastMsg, 
-              isStreaming: false, 
-              content: 'Error: ' + getFriendlyError(err) 
+            newChat[lastMsgIndex] = {
+              ...lastMsg,
+              isStreaming: false,
+              content: 'Error: ' + getFriendlyError(err)
             };
           }
           return newChat;
@@ -134,7 +140,7 @@ export function useChat({ initialChat } = {}) {
         setLoading(false);
       }
     },
-    [message, chat] // Note: chat is now a dependency because of chatHistory
+    [message, chat, mode] // Note: chat is now a dependency because of chatHistory
   );
 
   const uploadDocument = useCallback(async (files) => {
@@ -145,11 +151,11 @@ export function useChat({ initialChat } = {}) {
       if (data?.success && data?.files) {
         const filenames = data.files.map(f => f.filename);
         setUploadedFiles((prev) => [...prev, ...filenames]);
-        
-        const messageText = filenames.length > 1 
+
+        const messageText = filenames.length > 1
           ? `I have successfully analyzed the following documents: **${filenames.join(', ')}**. You can now ask me questions about them.`
           : `I have successfully analyzed the document **${filenames[0]}**. You can now ask me questions about it.`;
-          
+
         setChat((prev) => [...prev, { type: 'ai', content: messageText }]);
       }
     } catch (err) {
@@ -160,6 +166,8 @@ export function useChat({ initialChat } = {}) {
   }, []);
 
   return {
+    mode,
+    setMode,
     message,
     setMessage,
     chat,
