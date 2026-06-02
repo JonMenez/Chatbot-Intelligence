@@ -1,6 +1,6 @@
 import { Markdown } from '../Markdown.jsx';
 
-function MessageBubbleAi({ content, confidence, sources }) {
+function MessageBubbleAi({ content, confidence, sources, usedTools }) {
   return (
     <div className="flex flex-col gap-2 items-start max-w-[min(85%,36rem)]">
       <div className="flex items-center gap-2 mb-1 px-1">
@@ -13,8 +13,18 @@ function MessageBubbleAi({ content, confidence, sources }) {
         <Markdown text={content} />
       </div>
 
-      {(confidence !== undefined || (sources && sources.length > 0)) && (
+      {((usedTools && usedTools.length > 0) || confidence !== undefined || (sources && sources.length > 0)) && (
         <div className="flex flex-col gap-2 px-1 mt-3 w-full">
+          {usedTools && usedTools.length > 0 && (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-[1rem] bg-surface-variant/20 border border-white/5 backdrop-blur-md self-start group">
+              <span className="material-symbols-outlined text-[12px] text-primary/60 group-hover:text-primary transition-colors">
+                build
+              </span>
+              <span className="text-[11px] font-medium text-on-surface-variant/70 group-hover:text-on-surface transition-colors tracking-wide">
+                Used {usedTools.length} tool{usedTools.length !== 1 ? 's' : ''}: <span className="text-primary/80">{usedTools.join(', ')}</span>
+              </span>
+            </div>
+          )}
           {confidence !== undefined && (
             <div className="flex items-center gap-2 self-start">
               <div
@@ -97,10 +107,7 @@ function ChatLoadingBubble({ statusMessage = "Ethereal is thinking..." }) {
   );
 }
 
-export function ChatMessageList({ chat, loading, messagesEndRef }) {
-  const lastMsg = chat[chat.length - 1];
-  const isWaitingForFirstChunk = loading && lastMsg?.type === 'ai' && !lastMsg?.content;
-
+export function ChatMessageList({ chat, messagesEndRef }) {
   return (
     <div className="relative space-y-8">
       {chat.map((msg, idx) => {
@@ -116,7 +123,7 @@ export function ChatMessageList({ chat, loading, messagesEndRef }) {
             style={{ animationDelay: `${idx * 140}ms`, animationFillMode: 'both' }}
           >
             {msg.type === 'ai' ? (
-              <MessageBubbleAi content={msg.content} confidence={msg.confidence} sources={msg.sources} />
+              <MessageBubbleAi content={msg.content} confidence={msg.confidence} sources={msg.sources} usedTools={msg.usedTools} />
             ) : (
               <MessageBubbleUser content={msg.content} />
             )}

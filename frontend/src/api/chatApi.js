@@ -33,7 +33,7 @@ export async function postChatMessageStream(message, chatHistory = [], mode = 'a
     try {
       const errData = await response.json();
       errorMessage = errData.error || errorMessage;
-    } catch (e) {
+    } catch {
       errorMessage = response.statusText;
     }
     throw new Error(errorMessage);

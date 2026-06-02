@@ -1,19 +1,20 @@
 # Workspace (live task state)
 
-> Replace this template on your first real task. The dream cycle auto-archives
-> this file after 2 days of inactivity — don't keep long-lived notes here.
-
 ## Current task
-_none_
+- Translate user-facing messages, tool names, and code comments in `ChatMessageList.jsx` and `useChat.js` from Spanish to American English.
 
 ## Open files
-- _(none)_
+- [ChatMessageList.jsx](file:///Users/home/Documents/chatbot-ai/frontend/src/components/Chat/ChatMessageList.jsx)
+- [useChat.js](file:///Users/home/Documents/chatbot-ai/frontend/src/hooks/useChat.js)
 
 ## Active hypotheses
-- _(none)_
+- Spanish strings and comments in `ChatMessageList.jsx` and `useChat.js` need to be changed to American English to satisfy preference constraints.
 
 ## Checkpoints
-- [ ] _(none)_
+- [x] Review workspace rules and preferences.
+- [x] Edit ChatMessageList.jsx to translate Spanish messages.
+- [x] Edit useChat.js to translate tool names and comments.
+- [x] Verify execution by checking translations.
 
 ## Next step
-_(what would you do if interrupted and resumed tomorrow?)_
+- Completed. Task done.

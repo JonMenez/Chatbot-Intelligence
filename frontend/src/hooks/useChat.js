@@ -84,12 +84,26 @@ export function useChat({ initialChat } = {}) {
           if (data.type === 'tool_call' && data.tool) {
             setChat((prev) => {
               const newChat = [...prev];
-              newChat[newChat.length - 1] = { ...newChat[newChat.length - 1], agentStatus: `Using tool: ${data.tool}...` };
+              const lastMsgIndex = newChat.length - 1;
+              const lastMsg = newChat[lastMsgIndex];
+              
+              const toolNameMap = {
+                'ragSearchTool': 'knowledge base',
+                'registryTool': 'registry',
+                'calculatorTool': 'calculator'
+              };
+              const friendlyName = toolNameMap[data.tool] || data.tool;
+              const newStatus = `🛠️ Using tool: ${friendlyName}...`;
+              
+              const prevTools = lastMsg.usedTools || [];
+              const usedTools = prevTools.includes(data.tool) ? prevTools : [...prevTools, data.tool];
+
+              newChat[lastMsgIndex] = { ...lastMsg, agentStatus: newStatus, usedTools };
               return newChat;
             });
           }
 
-          // Compatibilidad: RAG antiguo solo manda data.chunk, Agente manda data.type === 'stream'
+          // Compatibility: old RAG only sends data.chunk, Agent sends data.type === 'stream'
           if (data.chunk) {
             setChat((prev) => {
               const newChat = [...prev];
@@ -102,7 +116,7 @@ export function useChat({ initialChat } = {}) {
             });
           }
 
-          // Compatibilidad: RAG manda data.done, Agente manda data.type === 'final_response' y data.done
+          // Compatibility: RAG sends data.done, Agent sends data.type === 'final_response' and data.done
           if (data.done) {
             setChat((prev) => {
               const newChat = [...prev];
