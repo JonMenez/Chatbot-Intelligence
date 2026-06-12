@@ -18,27 +18,24 @@ function getAgent() {
  * Runs the LangGraph agent with the given message and history.
  * @param {string} message - The user's query
  * @param {Array} chatHistory - Array of previous messages { role: 'user' | 'assistant', content: string }
- * @returns {Promise<Object>} An object containing the final reply and metadata about tool usage
+ * @param {string} thread_id - The session identifier for the checkpointer
  */
-async function runAgentChat(message, chatHistory = []) {
+async function runAgentChat(message, chatHistory = [], thread_id = 'default_thread') {
   const agent = getAgent();
 
-  // Convert raw chat history to LangChain message objects
-  const messages = chatHistory.map(msg => 
-    msg.role === 'user' ? new HumanMessage(msg.content) : new AIMessage(msg.content)
-  );
-
-  // Append current user message
-  messages.push(new HumanMessage(message));
+  // Since we are using a Checkpointer (MemorySaver), we only need to pass the new message.
+  // The checkpointer will automatically retrieve the previous messages for this thread_id.
+  const messages = [new HumanMessage(message)];
 
   const startTime = Date.now();
 
   try {
     console.log(`[AgentService] 🧠 Invoking agent for query: "${message.substring(0, 50)}..."`);
-    // Invoke the agent
-    const response = await agent.invoke({
-      messages: messages,
-    });
+    // Invoke the agent with thread_id configuration
+    const response = await agent.invoke(
+      { messages: messages },
+      { configurable: { thread_id } }
+    );
 
     const responseMessages = response.messages;
     
@@ -74,15 +71,13 @@ async function runAgentChat(message, chatHistory = []) {
  * @param {Object} params
  * @param {string} params.message - The user's query
  * @param {Array} params.chatHistory - Array of previous messages
- * @param {Object} params.res - Express response object for SSE
+ * @param {string} params.thread_id - The session identifier for the checkpointer
  */
-async function runAgentStream({ message, chatHistory = [], res }) {
+async function runAgentStream({ message, chatHistory = [], res, thread_id = 'default_thread' }) {
   const agent = getAgent();
 
-  const messages = chatHistory.map(msg => 
-    msg.role === 'user' ? new HumanMessage(msg.content) : new AIMessage(msg.content)
-  );
-  messages.push(new HumanMessage(message));
+  // We only pass the new message, the checkpointer manages the rest for this thread_id.
+  const messages = [new HumanMessage(message)];
 
   const startTime = Date.now();
   let usedTools = [];
@@ -95,8 +90,11 @@ async function runAgentStream({ message, chatHistory = [], res }) {
   sendEvent({ type: 'thinking', content: 'Agent is analyzing your query...' });
 
   try {
-    // Stream events using LangGraph's v2 events
-    const eventStream = await agent.streamEvents({ messages: messages }, { version: "v2" });
+    // Stream events using LangGraph's v2 events and thread_id configuration
+    const eventStream = await agent.streamEvents(
+      { messages: messages },
+      { version: "v2", configurable: { thread_id } }
+    );
 
     for await (const event of eventStream) {
       const eventType = event.event;

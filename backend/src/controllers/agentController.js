@@ -8,7 +8,7 @@ const { isRagReady } = require('../services/ragService');
  */
 async function postAgentChat(req, res) {
   try {
-    const { message, chatHistory = [] } = req.body;
+    const { message, chatHistory = [], thread_id = 'default_thread' } = req.body;
 
     if (!message || typeof message !== 'string') {
       return res.status(400).json({
@@ -32,7 +32,7 @@ async function postAgentChat(req, res) {
     }
 
     // Call the agent service (Option A: Synchronous JSON response)
-    const result = await runAgentChat(message, chatHistory);
+    const result = await runAgentChat(message, chatHistory, thread_id);
 
     return res.json({
       reply: result.reply,
@@ -58,7 +58,7 @@ async function postAgentChat(req, res) {
  */
 async function postAgentChatStream(req, res) {
   try {
-    const { message, chatHistory = [] } = req.body;
+    const { message, chatHistory = [], thread_id = 'default_thread' } = req.body;
 
     if (!message || typeof message !== 'string') {
       return res.status(400).json({ error: 'Message is required and must be a string' });
@@ -80,7 +80,7 @@ async function postAgentChatStream(req, res) {
     });
 
     // 2. Call the streaming service
-    await runAgentStream({ message, chatHistory, res });
+    await runAgentStream({ message, chatHistory, res, thread_id });
 
   } catch (error) {
     console.error('❌ Error in /agent/chat/stream:', error.message || error);

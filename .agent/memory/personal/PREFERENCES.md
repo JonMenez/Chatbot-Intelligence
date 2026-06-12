@@ -18,6 +18,7 @@
 - Commit style: conventional commits
 
 ## Communication
+- Chat Language: Spanish (Always respond to the user in Spanish, but keep code and project text in American English)
 - Review depth: everything
 - Tone: direct, skip pleasantries
 - Surface tradeoffs: always

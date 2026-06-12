@@ -1,6 +1,7 @@
 const { ChatGroq } = require("@langchain/groq");
 const { SystemMessage } = require("@langchain/core/messages");
 const { createReactAgent } = require("@langchain/langgraph/prebuilt");
+const { MemorySaver } = require("@langchain/langgraph");
 const { ragSearchTool } = require("../tools/ragSearchTool");
 const { registryTool } = require("../tools/registryTool");
 const { calculatorTool } = require("../tools/calculatorTool");
@@ -31,11 +32,15 @@ function createMainAgent() {
 You have access to tools that can search the knowledge base, list available documents in the registry, and perform mathematical calculations.
 Answer the user's queries concisely and accurately. If you don't know the answer, just say so.`);
 
-  // 4. Create the Tool Calling Agent using LangGraph prebuilt agent
+  // 4. Create a Checkpointer for conversational memory
+  const checkpointer = new MemorySaver();
+
+  // 5. Create the Tool Calling Agent using LangGraph prebuilt agent
   const agentExecutor = createReactAgent({
     llm,
     tools,
     messageModifier: systemMessage,
+    checkpointSaver: checkpointer,
   });
 
   return agentExecutor;

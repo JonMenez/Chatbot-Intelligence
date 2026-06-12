@@ -34,6 +34,7 @@ export function useChat({ initialChat } = {}) {
   const [uploading, setUploading] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [mode, setMode] = useState('agent');
+  const [threadId] = useState(() => 'thread_' + Math.random().toString(36).substring(2, 10));
   const messagesEndRef = useRef(null);
 
   const scrollToBottom = useCallback(() => {
@@ -135,7 +136,7 @@ export function useChat({ initialChat } = {}) {
               return newChat;
             });
           }
-        });
+        }, threadId);
       } catch (err) {
         setChat((prev) => {
           const newChat = [...prev];
@@ -154,7 +155,7 @@ export function useChat({ initialChat } = {}) {
         setLoading(false);
       }
     },
-    [message, chat, mode] // Note: chat is now a dependency because of chatHistory
+    [message, chat, mode, threadId] // Note: chat is now a dependency because of chatHistory
   );
 
   const uploadDocument = useCallback(async (files) => {
