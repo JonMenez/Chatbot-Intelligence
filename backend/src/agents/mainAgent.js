@@ -19,7 +19,7 @@ function createMainAgent() {
   // We use ChatGroq which natively supports tool calling
   const llm = new ChatGroq({
     apiKey: process.env.GROQ_API_KEY,
-    model: "llama-3.1-8b-instant", // Fallback to 8b-instant to avoid Llama 3.3 XML tool calling bugs
+    model: "llama-3.3-70b-versatile", // Use 70B for parallel tool calling and superior agent reasoning
     temperature: 0.1, // Keep it low for factual reliability
     maxTokens: 800,
   });

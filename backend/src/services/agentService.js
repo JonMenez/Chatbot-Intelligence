@@ -1,5 +1,6 @@
 const { createMainAgent } = require('../agents/mainAgent');
 const { HumanMessage, AIMessage } = require('@langchain/core/messages');
+const { CallbackHandler } = require("langfuse-langchain");
 
 // Initialize the agent executor globally
 let agentExecutor = null;
@@ -28,13 +29,27 @@ async function runAgentChat(message, chatHistory = [], thread_id = 'default_thre
   const messages = [new HumanMessage(message)];
 
   const startTime = Date.now();
-
+  let langfuseHandler;
   try {
     console.log(`[AgentService] 🧠 Invoking agent for query: "${message.substring(0, 50)}..."`);
-    // Invoke the agent with thread_id configuration
+    
+    // Initialize Langfuse handler for this run
+    langfuseHandler = new CallbackHandler({
+      secretKey: process.env.LANGFUSE_SECRET_KEY,
+      publicKey: process.env.LANGFUSE_PUBLIC_KEY,
+      baseUrl: process.env.LANGFUSE_BASE_URL,
+      sessionId: thread_id,
+      runName: "agent_chat_sync"
+    });
+
+    // Invoke the agent with thread_id configuration and langfuse callbacks
     const response = await agent.invoke(
       { messages: messages },
-      { configurable: { thread_id } }
+      { 
+        recursionLimit: 20,
+        configurable: { thread_id },
+        callbacks: [langfuseHandler]
+      }
     );
 
     const responseMessages = response.messages;
@@ -63,6 +78,13 @@ async function runAgentChat(message, chatHistory = [], thread_id = 'default_thre
   } catch (error) {
     console.error(`[AgentService] ❌ Error running agent: ${error.message}`);
     throw error;
+  } finally {
+    // Ensure traces are flushed to Langfuse
+    if (typeof langfuseHandler !== 'undefined') {
+      console.log(`[AgentService] 📤 Flushing traces to Langfuse...`);
+      await langfuseHandler.flushAsync();
+      console.log(`[AgentService] 📤 Langfuse traces flushed successfully.`);
+    }
   }
 }
 
@@ -74,6 +96,7 @@ async function runAgentChat(message, chatHistory = [], thread_id = 'default_thre
  * @param {string} params.thread_id - The session identifier for the checkpointer
  */
 async function runAgentStream({ message, chatHistory = [], res, thread_id = 'default_thread' }) {
+  console.log(`[AgentService] 🧠 Streaming agent for query: "${message}" (thread_id: ${thread_id})`);
   const agent = getAgent();
 
   // We only pass the new message, the checkpointer manages the rest for this thread_id.
@@ -89,11 +112,26 @@ async function runAgentStream({ message, chatHistory = [], res, thread_id = 'def
 
   sendEvent({ type: 'thinking', content: 'Agent is analyzing your query...' });
 
+  let langfuseHandler;
   try {
+    // Initialize Langfuse handler for this stream run
+    langfuseHandler = new CallbackHandler({
+      secretKey: process.env.LANGFUSE_SECRET_KEY,
+      publicKey: process.env.LANGFUSE_PUBLIC_KEY,
+      baseUrl: process.env.LANGFUSE_BASE_URL,
+      sessionId: thread_id,
+      runName: "agent_chat_stream"
+    });
+
     // Stream events using LangGraph's v2 events and thread_id configuration
     const eventStream = await agent.streamEvents(
       { messages: messages },
-      { version: "v2", configurable: { thread_id } }
+      { 
+        version: "v2", 
+        recursionLimit: 20,
+        configurable: { thread_id },
+        callbacks: [langfuseHandler]
+      }
     );
 
     for await (const event of eventStream) {
@@ -138,6 +176,13 @@ async function runAgentStream({ message, chatHistory = [], res, thread_id = 'def
     console.error(`[AgentService] ❌ Error in agent stream: ${error.message}`);
     sendEvent({ type: 'error', error: error.message || 'Stream processing failed' });
     res.end();
+  } finally {
+    // Ensure traces are flushed to Langfuse before ending completely
+    if (typeof langfuseHandler !== 'undefined') {
+      console.log(`[AgentService] 📤 Flushing traces to Langfuse...`);
+      await langfuseHandler.flushAsync();
+      console.log(`[AgentService] 📤 Langfuse traces flushed successfully.`);
+    }
   }
 }
 

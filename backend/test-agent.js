@@ -38,6 +38,8 @@ async function runTests() {
       // Invoke the LangGraph agent
       const response = await agentExecutor.invoke({
         messages: [new HumanMessage(scenario.query)],
+      }, {
+        configurable: { thread_id: "test-thread-" + scenario.name.replace(/\s+/g, "-").toLowerCase() }
       });
 
       // The response.messages contains the conversation history

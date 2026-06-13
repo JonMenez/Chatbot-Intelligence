@@ -70,8 +70,23 @@ export function useChat({ initialChat } = {}) {
 
       try {
         await postChatMessageStream(userMsg, chatHistory, mode, (data) => {
-          if (data.error) {
-            throw new Error(data.error);
+          if (data.error || data.type === 'error') {
+            const errorMsg = data.error || 'Unknown error occurred';
+            setChat((prev) => {
+              const newChat = [...prev];
+              const lastMsgIndex = newChat.length - 1;
+              const lastMsg = newChat[lastMsgIndex];
+              if (lastMsg && lastMsg.type === 'ai') {
+                newChat[lastMsgIndex] = {
+                  ...lastMsg,
+                  isStreaming: false,
+                  agentStatus: null,
+                  content: 'Error: ' + getFriendlyError({ message: errorMsg })
+                };
+              }
+              return newChat;
+            });
+            return;
           }
 
           if (data.type === 'thinking') {
