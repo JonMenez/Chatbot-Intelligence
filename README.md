@@ -63,6 +63,150 @@ Open **http://localhost:5173** in your browser.
 
 ---
 
+## 🏗️ Architecture & Technical Decisions
+
+Ethereal is built as a robust, production-grade agentic assistant leveraging LangGraph, Express, and ChromaDB. Below is the complete architecture flow:
+
+```mermaid
+graph TD
+    %% Styling and colors
+    classDef frontend fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc;
+    classDef backend fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#f8fafc;
+    classDef agent fill:#3b0764,stroke:#c084fc,stroke-width:2px,color:#f8fafc;
+    classDef tools fill:#14532d,stroke:#4ade80,stroke-width:2px,color:#f8fafc;
+    classDef database fill:#451a03,stroke:#fb923c,stroke-width:2px,color:#f8fafc;
+    classDef obs fill:#042f2e,stroke:#2dd4bf,stroke-width:2px,color:#f8fafc;
+    classDef highlight fill:#701a75,stroke:#f472b6,stroke-width:3px,color:#f8fafc;
+
+    subgraph ClientSpace ["Layer 1: Client Layer (React Frontend)"]
+        UI["React Web UI (Ethereal App)"]:::frontend
+        RAGMode["RAG Mode Page<br/>(Direct document QA)"]:::frontend
+        AgentMode["Agent Mode Page<br/>(Multi-tool interaction)"]:::frontend
+        UploadForm["Upload Form<br/>(Manage Knowledge Base)"]:::frontend
+        StreamHandler["SSE Client Reader<br/>(Live updates stream)"]:::frontend
+    end
+
+    subgraph ServerSpace ["Layer 2: API Gateway & Controllers (Express Backend)"]
+        API["Express Router (server.js)"]:::backend
+        RAGCtrl["RAG Controller<br/>(ragController.js)"]:::backend
+        AgentCtrl["Agent Controller<br/>(agentController.js)"]:::backend
+        UploadCtrl["Upload Controller<br/>(uploadController.js)"]:::backend
+    end
+
+    subgraph OrchestrationSpace ["Layer 3: Orchestration Layer (LangGraph & Pipelines)"]
+        RAGPipe["Direct RAG Pipeline<br/>(ragService.js)"]:::backend
+        AgentGraph["LangGraph Orchestrator<br/>(createReactAgent)"]:::highlight
+        MemorySaver["Checkpointer Memory<br/>(MemorySaver thread_id)"]:::agent
+        PostHook["postModelHook (Self-Correction)<br/>- Resolves Hallucinated Tool Aliases<br/>- Sanitizes Raw Arguments<br/>- Detects & Breaks Infinite Loops"]:::highlight
+        LLMWrapper["Groq Client Wrapper<br/>(Retries API tool-calling errors)"]:::agent
+        GroqAPI["Groq Cloud LLM<br/>(llama-3.3-70b-versatile)"]:::agent
+    end
+
+    subgraph ToolsSpace ["Layer 4: Agent Tools & Core Services"]
+        RagSearchTool["ragSearchTool<br/>(ragSearchTool.js)"]:::tools
+        RegTool["registryTool<br/>(registryTool.js)"]:::tools
+        CalcTool["calculatorTool<br/>(calculatorTool.js)"]:::tools
+        RegistryServ["Registry Service<br/>(registryService.js)"]:::backend
+    end
+
+    subgraph DataSpace ["Layer 5: Data & Embedding Layer"]
+        LocalDocs["backend/documents/<br/>(Local PDF/TXT Files)"]:::database
+        MappingJSON["_registry.json<br/>(Original to disk name registry)"]:::database
+        LocalEmbed["Local Embedding Model<br/>(Xenova/all-MiniLM-L6-v2)"]:::database
+        Chroma["ChromaDB Container<br/>(chatbot_knowledge collection)"]:::database
+    end
+
+    subgraph ObsSpace ["Layer 6: Observability Layer (Langfuse Tracing)"]
+        CallbackHandler["Langfuse Callback Handler<br/>(langfuse-langchain Handler)"]:::highlight
+        LangfuseCloud["Langfuse Dashboard<br/>(Traces, latency, tokens, session IDs)"]:::obs
+    end
+
+    %% Wiring client interface to endpoints
+    UI --> RAGMode
+    UI --> AgentMode
+    UI --> UploadForm
+
+    RAGMode -->|POST /rag| RAGCtrl
+    AgentMode -->|POST /agent/chat/stream| AgentCtrl
+    UploadForm -->|POST /upload| UploadCtrl
+
+    %% Routing inside Server
+    RAGCtrl -->|Trigger| RAGPipe
+    AgentCtrl -->|Trigger| AgentGraph
+    UploadCtrl -->|1. Write files & registry| LocalDocs
+    UploadCtrl -->|2. Ingest into Chroma| RAGPipe
+
+    %% Direct RAG Flow
+    RAGPipe -->|Similarity Search| Chroma
+    RAGPipe -->|Prompt + Context| GroqAPI
+
+    %% Agent Flow & Persistency
+    AgentGraph <-->|Thread Persistency| MemorySaver
+    AgentGraph -->|Run Agent Execution| LLMWrapper
+    LLMWrapper -->|API Call| GroqAPI
+    GroqAPI -->|Tool call / response| LLMWrapper
+    LLMWrapper -->|Intercept LLM response| PostHook
+    PostHook -->|Apply validation & corrections| AgentGraph
+
+    %% Tools Wiring
+    AgentGraph -->|Invoke| RagSearchTool
+    AgentGraph -->|Invoke| RegTool
+    AgentGraph -->|Invoke| CalcTool
+
+    %% Tools Implementation details
+    RagSearchTool -->|Semantic search query| RAGPipe
+    RegTool -->|Read registry| RegistryServ
+    RegistryServ -->|Query mapping| MappingJSON
+    CalcTool -->|Perform evaluation| CalcTool
+
+    %% Local embed and db ingestion
+    RAGPipe -->|Load documents| LocalDocs
+    RAGPipe -->|Tokenize & Vectorize| LocalEmbed
+    LocalEmbed -->|Upload vectors| Chroma
+
+    %% Observability Tracking
+    AgentGraph -.->|Send execution callbacks| CallbackHandler
+    CallbackHandler -.->|Log Traces & Latency| LangfuseCloud
+
+    %% Streaming Back to Client
+    AgentGraph -.->|SSE Events:<br/>1. 'thinking' (Initial state)<br/>2. 'tool_call' (Tool input)<br/>3. 'stream' (Token chunks)<br/>4. 'tool_result' (Execution finished)<br/>5. 'final_response' (Done + Metadata)| StreamHandler
+    StreamHandler -.->|Update Chat State| UI
+
+    %% Ingestion loop
+    RAGPipe -->|Startup load & re-ingest| LocalDocs
+    RAGPipe -->|Vectorize chunks| LocalEmbed
+    LocalEmbed -->|Upload embeddings| Chroma
+
+    %% Styling maps
+    class UI,RAGMode,AgentMode,UploadForm,StreamHandler frontend;
+    class API,RAGCtrl,AgentCtrl,UploadCtrl,RAGPipe,RegistryServ backend;
+    class AgentGraph,MemorySaver,PostHook,LLMWrapper,GroqAPI agent;
+    class RagSearchTool,RegTool,CalcTool tools;
+    class LocalDocs,MappingJSON,LocalEmbed,Chroma database;
+    class CallbackHandler,LangfuseCloud obs;
+```
+
+### 🔑 Key Technical Decisions & Resilience Mechanisms
+
+To bridge the gap between prototype and production readiness, we implemented several key safety patterns in the backend:
+
+1. **`postModelHook` for Agent Self-Correction & Loop Breaking**:
+   - **Alias Mapping**: Prevents errors when the LLM hallucinates tool names (e.g., mapping `calc`, `math` to `calculator_tool`).
+   - **Arguments Sanitization**: Normalizes cases where Groq calls a tool with a plain string instead of the structured JSON schema (e.g. mapping `"10*5"` to `{expression: "10*5"}`).
+   - **Loop Breaking**: Detects if the agent tries to repeatedly call the same tool with the exact same arguments in a single conversation. If a loop is caught, it clears the tool calls list and falls back to using the previous tool output to formulate a text response.
+2. **Groq LLM Client Wrapper for Retry Logic**:
+   - Groq sometimes returns a `400 BadRequestError` (with messages like `tool_use_failed` or `Failed to call a function`) due to formatting quirks. We wrapped the `ChatGroq` client to intercept these errors and automatically retry up to 3 times before failing.
+3. **Local Embedding Generation**:
+   - Rather than relying on paid OpenAI/Cohere API endpoints, the backend generates document embeddings locally using HuggingFace's `@xenova/transformers` with the `all-MiniLM-L6-v2` model running directly in Node.js. This ensures zero API costs for RAG operations.
+4. **SSE Streaming for Real-Time Interaction**:
+   - Utilizing Server-Sent Events (SSE) to stream tokens as they are generated, along with `thinking` and `tool_call` state updates, giving the user instant feedback on the agent's reasoning steps.
+5. **Full Observability with Langfuse**:
+   - The agent service is fully instrumented with the `langfuse-langchain` SDK. It records all traces, sessions (mapped via thread IDs), latency metrics, tool execution details, and LLM costs.
+6. **Thread-Persistent Memory**:
+   - Configured with LangGraph's `MemorySaver` checkpointer, enabling persistent, thread-safe session history across restarts.
+
+---
+
 ## 📋 Available Scripts
 
 ### Backend (`/backend/package.json`)

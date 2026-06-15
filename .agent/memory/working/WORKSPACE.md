@@ -19,4 +19,4 @@
 - [x] Investigate and fix the empty bubble response caused by ChatGroq returning malformed `invalid_tool_calls` (args: "null").
 
 ## Next step
-- Task completed successfully. Archive workspace state.
+- Archive workspace state. All tasks for Lunes 15 (polishing, architecture diagram, README update, and GET /documents route mount) have been successfully executed and verified.

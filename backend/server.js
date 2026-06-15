@@ -4,7 +4,7 @@ const cors = require('cors');
 const { isGroqReady } = require('./src/config/groq');
 const { postChat } = require('./src/controllers/chatController');
 const { postRag, initRag } = require('./src/controllers/ragController');
-const { uploadMiddleware, postUpload } = require('./src/controllers/uploadController');
+const { uploadMiddleware, postUpload, getDocuments } = require('./src/controllers/uploadController');
 const agentRoutes = require('./src/routes/agentRoutes');
 
 const app = express();
@@ -450,6 +450,9 @@ app.post('/rag', postRag);
 // Document upload endpoint for RAG
 app.post('/upload', uploadMiddleware, postUpload);
 
+// Document list endpoint for RAG
+app.get('/documents', getDocuments);
+
 // Agent endpoint (Replaces the direct RAG flow)
 app.use('/agent', agentRoutes);
 
@@ -470,7 +473,7 @@ app.use((req, res) => {
     error: 'Endpoint not found', 
     path: req.path,
     method: req.method,
-    availableEndpoints: ['/chat (POST)', '/rag (POST)', '/agent/chat (POST)', '/health (GET)', '/ (GET)']
+    availableEndpoints: ['/chat (POST)', '/rag (POST)', '/agent/chat (POST)', '/documents (GET)', '/health (GET)', '/ (GET)']
   });
 });
 
