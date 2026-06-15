@@ -70,6 +70,7 @@ Ethereal is built as a robust, production-grade agentic assistant leveraging Lan
 Here is the **Simplified Architecture Flow** (ideal for a 2-minute interview overview):
 
 ```mermaid
+%%{init: {"flowchart": {"htmlLabels": false}}}%%
 graph TD
     %% Styling and colors
     classDef frontend fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc;
@@ -82,25 +83,25 @@ graph TD
     %% Client Layer
     subgraph FrontendSpace ["Client Layer (React Frontend)"]
         UI["React Web UI"]:::frontend
-        RAGMode["RAG Mode Page<br/>(Direct document QA)"]:::frontend
-        AgentMode["Agent Mode Page<br/>(Multi-tool interaction)"]:::frontend
+        RAGMode["RAG Mode Page\n(Direct document QA)"]:::frontend
+        AgentMode["Agent Mode Page\n(Multi-tool interaction)"]:::frontend
     end
 
     %% Backend Layer
     subgraph ServerSpace ["Server Layer (Express Backend)"]
         RAGPipe["Direct RAG Service"]:::backend
         AgentGraph["LangGraph Agent Executor"]:::highlight
-        PostHook["postModelHook (Self-Correction)<br/>- Validates & sanitizes LLM output<br/>- Prevents infinite tool loops"]:::highlight
+        PostHook["postModelHook (Self-Correction)\n- Validates & sanitizes LLM output\n- Prevents infinite tool loops"]:::highlight
     end
 
     %% Tools
     subgraph ToolsSpace ["Agent Tools"]
-        Tools["Tools List<br/>- ragSearchTool<br/>- registryTool<br/>- calculatorTool"]:::backend
+        Tools["Tools List\n- ragSearchTool\n- registryTool\n- calculatorTool"]:::backend
     end
 
     %% Storage & Embeddings
     subgraph DataSpace ["Data & Embeddings Layer"]
-        LocalEmbed["Local Embeddings Model<br/>(all-MiniLM-L6-v2)"]:::database
+        LocalEmbed["Local Embeddings Model\n(all-MiniLM-L6-v2)"]:::database
         Chroma["ChromaDB Vector Store"]:::database
     end
 
@@ -113,30 +114,30 @@ graph TD
     UI --> RAGMode
     UI --> AgentMode
 
-    RAGMode -->|1. POST /rag| RAGPipe
-    AgentMode -->|1. POST /agent/chat/stream| AgentGraph
+    RAGMode -->| "1. POST /rag" | RAGPipe
+    AgentMode -->| "1. POST /agent/chat/stream" | AgentGraph
 
     %% RAG Flow
-    RAGPipe -->|Similarity Search| Chroma
+    RAGPipe -->| "Similarity Search" | Chroma
 
     %% Agent Flow
-    AgentGraph -->|LLM Response| PostHook
-    PostHook -->|Corrections| AgentGraph
-    AgentGraph -->|Invoke| Tools
+    AgentGraph -->| "LLM Response" | PostHook
+    PostHook -->| "Corrections" | AgentGraph
+    AgentGraph -->| "Invoke" | Tools
 
     %% Tools to Services
-    Tools -->|Semantic Search| RAGPipe
+    Tools -->| "Semantic Search" | RAGPipe
     
     %% Ingest & Embeddings
-    RAGPipe -->|Generate Vectors| LocalEmbed
-    LocalEmbed -->|Upload Embeddings| Chroma
+    RAGPipe -->| "Generate Vectors" | LocalEmbed
+    LocalEmbed -->| "Upload Embeddings" | Chroma
 
     %% Tracing
-    AgentGraph -.->|Log Traces| LangfuseCloud
+    AgentGraph -.->| "Log Traces" | LangfuseCloud
 
     %% Streaming response
-    AgentGraph -.->|2. Streaming SSE (chunks)| UI
-    RAGPipe -.->|2. Sync / Stream response| UI
+    AgentGraph -.->| "2. Streaming SSE (chunks)" | UI
+    RAGPipe -.->| "2. Sync / Stream response" | UI
 
     %% Styling maps
     class UI,RAGMode,AgentMode frontend;
@@ -151,6 +152,7 @@ graph TD
 <summary>🔍 Click to view the Detailed Architecture Diagram (Detailed Components & Full SSE Data Flow)</summary>
 
 ```mermaid
+%%{init: {"flowchart": {"htmlLabels": false}}}%%
 graph TD
     %% Styling and colors
     classDef frontend fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc;
@@ -164,45 +166,45 @@ graph TD
     %% Nodes Definitions
     subgraph FrontendSpace ["Client Layer (React Frontend)"]
         UI["React Web UI (Ethereal App)"]:::frontend
-        RAGMode["RAG Mode Page<br/>(Direct document QA)"]:::frontend
-        AgentMode["Agent Mode Page<br/>(Multi-tool interaction)"]:::frontend
-        UploadForm["Upload Form<br/>(Manage Knowledge Base)"]:::frontend
-        StreamHandler["SSE Client Reader<br/>(Live updates stream)"]:::frontend
+        RAGMode["RAG Mode Page\n(Direct document QA)"]:::frontend
+        AgentMode["Agent Mode Page\n(Multi-tool interaction)"]:::frontend
+        UploadForm["Upload Form\n(Manage Knowledge Base)"]:::frontend
+        StreamHandler["SSE Client Reader\n(Live updates stream)"]:::frontend
     end
 
     subgraph ServerSpace ["Server Layer (Express Backend)"]
         API["Express Router (server.js)"]:::backend
-        RAGCtrl["RAG Controller<br/>(ragController.js)"]:::backend
-        AgentCtrl["Agent Controller<br/>(agentController.js)"]:::backend
-        UploadCtrl["Upload Controller<br/>(uploadController.js)"]:::backend
+        RAGCtrl["RAG Controller\n(ragController.js)"]:::backend
+        AgentCtrl["Agent Controller\n(agentController.js)"]:::backend
+        UploadCtrl["Upload Controller\n(uploadController.js)"]:::backend
     end
 
     subgraph OrchestrationSpace ["Layer 3: Orchestration Layer (LangGraph & Pipelines)"]
-        RAGPipe["Direct RAG Pipeline<br/>(ragService.js)"]:::backend
-        AgentGraph["LangGraph Orchestrator<br/>(createReactAgent)"]:::highlight
-        MemorySaver["Checkpointer Memory<br/>(MemorySaver thread_id)"]:::agent
-        PostHook["postModelHook (Self-Correction)<br/>- Resolves Hallucinated Tool Aliases<br/>- Sanitizes Raw Arguments<br/>- Detects & Breaks Infinite Loops"]:::highlight
-        LLMWrapper["Groq Client Wrapper<br/>(Retries API tool-calling errors)"]:::agent
-        GroqAPI["Groq Cloud LLM<br/>(llama-3.3-70b-versatile)"]:::agent
+        RAGPipe["Direct RAG Pipeline\n(ragService.js)"]:::backend
+        AgentGraph["LangGraph Orchestrator\n(createReactAgent)"]:::highlight
+        MemorySaver["Checkpointer Memory\n(MemorySaver thread_id)"]:::agent
+        PostHook["postModelHook (Self-Correction)\n- Resolves Hallucinated Tool Aliases\n- Sanitizes Raw Arguments\n- Detects & Breaks Infinite Loops"]:::highlight
+        LLMWrapper["Groq Client Wrapper\n(Retries API tool-calling errors)"]:::agent
+        GroqAPI["Groq Cloud LLM\n(llama-3.3-70b-versatile)"]:::agent
     end
 
     subgraph ToolsSpace ["Layer 4: Agent Tools & Core Services"]
-        RagSearchTool["ragSearchTool<br/>(ragSearchTool.js)"]:::tools
-        RegTool["registryTool<br/>(registryTool.js)"]:::tools
-        CalcTool["calculatorTool<br/>(calculatorTool.js)"]:::tools
-        RegistryServ["Registry Service<br/>(registryService.js)"]:::backend
+        RagSearchTool["ragSearchTool\n(ragSearchTool.js)"]:::tools
+        RegTool["registryTool\n(registryTool.js)"]:::tools
+        CalcTool["calculatorTool\n(calculatorTool.js)"]:::tools
+        RegistryServ["Registry Service\n(registryService.js)"]:::backend
     end
 
     subgraph DataSpace ["Layer 5: Data & Embedding Layer"]
-        LocalDocs["backend/documents/<br/>(Local PDF/TXT Files)"]:::database
-        MappingJSON["_registry.json<br/>(Original to disk name registry)"]:::database
-        LocalEmbed["Local Embedding Model<br/>(Xenova/all-MiniLM-L6-v2)"]:::database
-        Chroma["ChromaDB Container<br/>(chatbot_knowledge collection)"]:::database
+        LocalDocs["backend/documents/\n(Local PDF/TXT Files)"]:::database
+        MappingJSON["_registry.json\n(Original to disk name registry)"]:::database
+        LocalEmbed["Local Embedding Model\n(Xenova/all-MiniLM-L6-v2)"]:::database
+        Chroma["ChromaDB Container\n(chatbot_knowledge collection)"]:::database
     end
 
     subgraph ObsSpace ["Layer 6: Observability Layer (Langfuse Tracing)"]
-        CallbackHandler["Langfuse Callback Handler<br/>(langfuse-langchain Handler)"]:::highlight
-        LangfuseCloud["Langfuse Dashboard<br/>(Traces, latency, tokens, session IDs)"]:::obs
+        CallbackHandler["Langfuse Callback Handler\n(langfuse-langchain Handler)"]:::highlight
+        LangfuseCloud["Langfuse Dashboard\n(Traces, latency, tokens, session IDs)"]:::obs
     end
 
     %% Wiring client interface to endpoints
@@ -210,56 +212,56 @@ graph TD
     UI --> AgentMode
     UI --> UploadForm
 
-    RAGMode -->|POST /rag| RAGCtrl
-    AgentMode -->|POST /agent/chat/stream| AgentCtrl
-    UploadForm -->|POST /upload| UploadCtrl
+    RAGMode -->| "POST /rag" | RAGCtrl
+    AgentMode -->| "POST /agent/chat/stream" | AgentCtrl
+    UploadForm -->| "POST /upload" | UploadCtrl
 
     %% Routing inside Server
-    RAGCtrl -->|Trigger| RAGPipe
-    AgentCtrl -->|Trigger| AgentGraph
-    UploadCtrl -->|1. Write files & registry| LocalDocs
-    UploadCtrl -->|2. Ingest into Chroma| RAGPipe
+    RAGCtrl -->| "Trigger" | RAGPipe
+    AgentCtrl -->| "Trigger" | AgentGraph
+    UploadCtrl -->| "1. Write files & registry" | LocalDocs
+    UploadCtrl -->| "2. Ingest into Chroma" | RAGPipe
 
     %% Direct RAG Flow
-    RAGPipe -->|Similarity Search| Chroma
-    RAGPipe -->|Prompt + Context| GroqAPI
+    RAGPipe -->| "Similarity Search" | Chroma
+    RAGPipe -->| "Prompt + Context" | GroqAPI
 
     %% Agent Flow & Persistency
-    AgentGraph <-->|Thread Persistency| MemorySaver
-    AgentGraph -->|Run Agent Execution| LLMWrapper
-    LLMWrapper -->|API Call| GroqAPI
-    GroqAPI -->|Tool call / response| LLMWrapper
-    LLMWrapper -->|Intercept LLM response| PostHook
-    PostHook -->|Apply validation & corrections| AgentGraph
+    AgentGraph <-->| "Thread Persistency" | MemorySaver
+    AgentGraph -->| "Run Agent Execution" | LLMWrapper
+    LLMWrapper -->| "API Call" | GroqAPI
+    GroqAPI -->| "Tool call / response" | LLMWrapper
+    LLMWrapper -->| "Intercept LLM response" | PostHook
+    PostHook -->| "Apply validation & corrections" | AgentGraph
 
     %% Tools Wiring
-    AgentGraph -->|Invoke| RagSearchTool
-    AgentGraph -->|Invoke| RegTool
-    AgentGraph -->|Invoke| CalcTool
+    AgentGraph -->| "Invoke" | RagSearchTool
+    AgentGraph -->| "Invoke" | RegTool
+    AgentGraph -->| "Invoke" | CalcTool
 
     %% Tools Implementation details
-    RagSearchTool -->|Semantic search query| RAGPipe
-    RegTool -->|Read registry| RegistryServ
-    RegistryServ -->|Query mapping| MappingJSON
-    CalcTool -->|Perform evaluation| CalcTool
+    RagSearchTool -->| "Semantic search query" | RAGPipe
+    RegTool -->| "Read registry" | RegistryServ
+    RegistryServ -->| "Query mapping" | MappingJSON
+    CalcTool -->| "Perform evaluation" | CalcTool
 
     %% Local embed and db ingestion
-    RAGPipe -->|Load documents| LocalDocs
-    RAGPipe -->|Tokenize & Vectorize| LocalEmbed
-    LocalEmbed -->|Upload vectors| Chroma
+    RAGPipe -->| "Load documents" | LocalDocs
+    RAGPipe -->| "Tokenize & Vectorize" | LocalEmbed
+    LocalEmbed -->| "Upload vectors" | Chroma
 
     %% Observability Tracking
-    AgentGraph -.->|Send execution callbacks| CallbackHandler
-    CallbackHandler -.->|Log Traces & Latency| LangfuseCloud
+    AgentGraph -.->| "Send execution callbacks" | CallbackHandler
+    CallbackHandler -.->| "Log Traces & Latency" | LangfuseCloud
 
     %% Streaming Back to Client
-    AgentGraph -.->|SSE Events:<br/>1. 'thinking' (Initial state)<br/>2. 'tool_call' (Tool input)<br/>3. 'stream' (Token chunks)<br/>4. 'tool_result' (Execution finished)<br/>5. 'final_response' (Done + Metadata)| StreamHandler
-    StreamHandler -.->|Update Chat State| UI
+    AgentGraph -.->| "SSE Events:\n1. 'thinking' (Initial state)\n2. 'tool_call' (Tool input)\n3. 'stream' (Token chunks)\n4. 'tool_result' (Execution finished)\n5. 'final_response' (Done + Metadata)" | StreamHandler
+    StreamHandler -.->| "Update Chat State" | UI
 
     %% Ingestion loop
-    RAGPipe -->|Startup load & re-ingest| LocalDocs
-    RAGPipe -->|Vectorize chunks| LocalEmbed
-    LocalEmbed -->|Upload embeddings| Chroma
+    RAGPipe -->| "Startup load & re-ingest" | LocalDocs
+    RAGPipe -->| "Vectorize chunks" | LocalEmbed
+    LocalEmbed -->| "Upload embeddings" | Chroma
 
     %% Styling maps
     class UI,RAGMode,AgentMode,UploadForm,StreamHandler frontend;
