@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const DOCUMENTS_DIR = path.join(__dirname, '../../../documents');
+const DOCUMENTS_DIR = path.join(__dirname, '../../documents');
 const REGISTRY_PATH = path.join(DOCUMENTS_DIR, '_registry.json');
 
 // Assure directory exists

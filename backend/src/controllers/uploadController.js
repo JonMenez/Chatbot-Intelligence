@@ -5,7 +5,7 @@ const { addDocumentToVectorStore } = require('../services/ragService');
 const registryService = require('../services/registryService');
 
 // Ensure documents directory exists
-const DOCUMENTS_DIR = path.join(__dirname, '../../../documents');
+const DOCUMENTS_DIR = path.join(__dirname, '../../documents');
 if (!fs.existsSync(DOCUMENTS_DIR)) {
   fs.mkdirSync(DOCUMENTS_DIR, { recursive: true });
 }

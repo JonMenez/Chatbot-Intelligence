@@ -21,12 +21,12 @@ const calculatorTool = new DynamicStructuredTool({
       const result = new Function(`return ${parsableExpr}`)();
       
       if (isNaN(result) || !isFinite(result)) {
-         return `Error: Result is not a valid number.`;
+         throw new Error(`Result of expression "${expression}" is not a valid number (e.g. division by zero).`);
       }
       
       return `Result of ${expression} = ${result}`;
     } catch (error) {
-      return `Error calculating expression '${expression}': Invalid syntax or format.`;
+      throw new Error(`Invalid math expression: "${expression}". Details: ${error.message}`);
     }
   }
 });
