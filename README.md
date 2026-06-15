@@ -65,7 +65,90 @@ Open **http://localhost:5173** in your browser.
 
 ## 🏗️ Architecture & Technical Decisions
 
-Ethereal is built as a robust, production-grade agentic assistant leveraging LangGraph, Express, and ChromaDB. Below is the complete architecture flow:
+Ethereal is built as a robust, production-grade agentic assistant leveraging LangGraph, Express, and ChromaDB. 
+
+Here is the **Simplified Architecture Flow** (ideal for a 2-minute interview overview):
+
+```mermaid
+graph TD
+    %% Styling and colors
+    classDef frontend fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc;
+    classDef backend fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#f8fafc;
+    classDef agent fill:#3b0764,stroke:#c084fc,stroke-width:2px,color:#f8fafc;
+    classDef database fill:#451a03,stroke:#fb923c,stroke-width:2px,color:#f8fafc;
+    classDef obs fill:#042f2e,stroke:#2dd4bf,stroke-width:2px,color:#f8fafc;
+    classDef highlight fill:#701a75,stroke:#f472b6,stroke-width:3px,color:#f8fafc;
+
+    %% Client Layer
+    subgraph FrontendSpace ["Client Layer (React Frontend)"]
+        UI["React Web UI"]:::frontend
+        RAGMode["RAG Mode Page<br/>(Direct document QA)"]:::frontend
+        AgentMode["Agent Mode Page<br/>(Multi-tool interaction)"]:::frontend
+    end
+
+    %% Backend Layer
+    subgraph ServerSpace ["Server Layer (Express Backend)"]
+        RAGPipe["Direct RAG Service"]:::backend
+        AgentGraph["LangGraph Agent Executor"]:::highlight
+        PostHook["postModelHook (Self-Correction)<br/>- Validates & sanitizes LLM output<br/>- Prevents infinite tool loops"]:::highlight
+    end
+
+    %% Tools
+    subgraph ToolsSpace ["Agent Tools"]
+        Tools["Tools List<br/>- ragSearchTool<br/>- registryTool<br/>- calculatorTool"]:::backend
+    end
+
+    %% Storage & Embeddings
+    subgraph DataSpace ["Data & Embeddings Layer"]
+        LocalEmbed["Local Embeddings Model<br/>(all-MiniLM-L6-v2)"]:::database
+        Chroma["ChromaDB Vector Store"]:::database
+    end
+
+    %% Observability
+    subgraph ObsSpace ["Observability (Langfuse)"]
+        LangfuseCloud["Langfuse Dashboard"]:::obs
+    end
+
+    %% Connections
+    UI --> RAGMode
+    UI --> AgentMode
+
+    RAGMode -->|1. POST /rag| RAGPipe
+    AgentMode -->|1. POST /agent/chat/stream| AgentGraph
+
+    %% RAG Flow
+    RAGPipe -->|Similarity Search| Chroma
+
+    %% Agent Flow
+    AgentGraph -->|LLM Response| PostHook
+    PostHook -->|Corrections| AgentGraph
+    AgentGraph -->|Invoke| Tools
+
+    %% Tools to Services
+    Tools -->|Semantic Search| RAGPipe
+    
+    %% Ingest & Embeddings
+    RAGPipe -->|Generate Vectors| LocalEmbed
+    LocalEmbed -->|Upload Embeddings| Chroma
+
+    %% Tracing
+    AgentGraph -.->|Log Traces| LangfuseCloud
+
+    %% Streaming response
+    AgentGraph -.->|2. Streaming SSE (chunks)| UI
+    RAGPipe -.->|2. Sync / Stream response| UI
+
+    %% Styling maps
+    class UI,RAGMode,AgentMode frontend;
+    class RAGPipe backend;
+    class AgentGraph,PostHook agent;
+    class Tools tools;
+    class LocalEmbed,Chroma database;
+    class LangfuseCloud obs;
+```
+
+<details>
+<summary>🔍 Click to view the Detailed Architecture Diagram (Detailed Components & Full SSE Data Flow)</summary>
 
 ```mermaid
 graph TD
@@ -78,7 +161,8 @@ graph TD
     classDef obs fill:#042f2e,stroke:#2dd4bf,stroke-width:2px,color:#f8fafc;
     classDef highlight fill:#701a75,stroke:#f472b6,stroke-width:3px,color:#f8fafc;
 
-    subgraph ClientSpace ["Layer 1: Client Layer (React Frontend)"]
+    %% Nodes Definitions
+    subgraph FrontendSpace ["Client Layer (React Frontend)"]
         UI["React Web UI (Ethereal App)"]:::frontend
         RAGMode["RAG Mode Page<br/>(Direct document QA)"]:::frontend
         AgentMode["Agent Mode Page<br/>(Multi-tool interaction)"]:::frontend
@@ -86,7 +170,7 @@ graph TD
         StreamHandler["SSE Client Reader<br/>(Live updates stream)"]:::frontend
     end
 
-    subgraph ServerSpace ["Layer 2: API Gateway & Controllers (Express Backend)"]
+    subgraph ServerSpace ["Server Layer (Express Backend)"]
         API["Express Router (server.js)"]:::backend
         RAGCtrl["RAG Controller<br/>(ragController.js)"]:::backend
         AgentCtrl["Agent Controller<br/>(agentController.js)"]:::backend
@@ -185,6 +269,8 @@ graph TD
     class LocalDocs,MappingJSON,LocalEmbed,Chroma database;
     class CallbackHandler,LangfuseCloud obs;
 ```
+
+</details>
 
 ### 🔑 Key Technical Decisions & Resilience Mechanisms
 
