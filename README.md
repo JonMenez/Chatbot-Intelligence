@@ -72,7 +72,7 @@ Here is the **Simplified Architecture Flow** (ideal for a 2-minute interview ove
 ```mermaid
 %%{init: {"flowchart": {"htmlLabels": false}}}%%
 graph TD
-    %% Styling and colors
+    %% Styling
     classDef frontend fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc;
     classDef backend fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#f8fafc;
     classDef agent fill:#3b0764,stroke:#c084fc,stroke-width:2px,color:#f8fafc;
@@ -80,72 +80,67 @@ graph TD
     classDef obs fill:#042f2e,stroke:#2dd4bf,stroke-width:2px,color:#f8fafc;
     classDef highlight fill:#701a75,stroke:#f472b6,stroke-width:3px,color:#f8fafc;
 
-    %% Client Layer
-    subgraph FrontendSpace ["Client Layer (React Frontend)"]
+    %% Layers
+    subgraph Client ["Client Layer"]
         UI["React Web UI"]:::frontend
         RAGMode["RAG Mode Page\n(Direct document QA)"]:::frontend
-        AgentMode["Agent Mode Page\n(Multi-tool interaction)"]:::frontend
+        AgentMode["Agent Mode Page\n(Multi-tool)"]:::frontend
     end
 
-    %% Backend Layer
-    subgraph ServerSpace ["Server Layer (Express Backend)"]
+    subgraph Server ["Server Layer"]
         RAGPipe["Direct RAG Service"]:::backend
-        AgentGraph["LangGraph Agent Executor"]:::highlight
-        PostHook["postModelHook (Self-Correction)\n- Validates & sanitizes LLM output\n- Prevents infinite tool loops"]:::highlight
+        AgentGraph["LangGraph Agent"]:::highlight
+        PostHook["postModelHook\n(Self-Correction + Loop Prevention)"]:::highlight
     end
 
-    %% Tools
-    subgraph ToolsSpace ["Agent Tools"]
-        Tools["Tools List\n- ragSearchTool\n- registryTool\n- calculatorTool"]:::backend
+    subgraph Tools ["Agent Tools"]
+        ToolList["ragSearchTool\nregistryTool\ncalculatorTool"]:::backend
     end
 
-    %% Storage & Embeddings
-    subgraph DataSpace ["Data & Embeddings Layer"]
-        LocalEmbed["Local Embeddings Model\n(all-MiniLM-L6-v2)"]:::database
-        Chroma["ChromaDB Vector Store"]:::database
+    subgraph Data ["Data Layer"]
+        Embeddings["Local Embeddings\n(all-MiniLM-L6-v2)"]:::database
+        Chroma["ChromaDB"]:::database
     end
 
-    %% Observability
-    subgraph ObsSpace ["Observability (Langfuse)"]
-        LangfuseCloud["Langfuse Dashboard"]:::obs
+    subgraph Observability ["Observability"]
+        Langfuse["Langfuse"]:::obs
     end
 
     %% Connections
     UI --> RAGMode
     UI --> AgentMode
 
-    RAGMode -->| "1. POST /rag" | RAGPipe
-    AgentMode -->| "1. POST /agent/chat/stream" | AgentGraph
+    RAGMode -->|POST /rag| RAGPipe
+    AgentMode -->|POST /agent/chat/stream| AgentGraph
 
     %% RAG Flow
-    RAGPipe -->| "Similarity Search" | Chroma
+    RAGPipe -->|Similarity Search| Chroma
 
     %% Agent Flow
-    AgentGraph -->| "LLM Response" | PostHook
-    PostHook -->| "Corrections" | AgentGraph
-    AgentGraph -->| "Invoke" | Tools
+    AgentGraph -->|LLM Response| PostHook
+    PostHook -->|Corrections| AgentGraph
+    AgentGraph -->|Invoke Tools| ToolList
 
-    %% Tools to Services
-    Tools -->| "Semantic Search" | RAGPipe
-    
-    %% Ingest & Embeddings
-    RAGPipe -->| "Generate Vectors" | LocalEmbed
-    LocalEmbed -->| "Upload Embeddings" | Chroma
+    %% Tool to RAG
+    ToolList -->|Semantic Search| RAGPipe
 
-    %% Tracing
-    AgentGraph -.->| "Log Traces" | LangfuseCloud
+    %% Ingestion
+    RAGPipe -->|Generate Vectors| Embeddings
+    Embeddings -->|Store| Chroma
 
-    %% Streaming response
-    AgentGraph -.->| "2. Streaming SSE (chunks)" | UI
-    RAGPipe -.->| "2. Sync / Stream response" | UI
+    %% Observability
+    AgentGraph -.->|Traces| Langfuse
 
-    %% Styling maps
+    %% Streaming
+    AgentGraph -.->|Streaming SSE| UI
+    RAGPipe -.->|Response| UI
+
+    %% Styling
     class UI,RAGMode,AgentMode frontend;
-    class RAGPipe backend;
+    class RAGPipe,ToolList backend;
     class AgentGraph,PostHook agent;
-    class Tools tools;
-    class LocalEmbed,Chroma database;
-    class LangfuseCloud obs;
+    class Embeddings,Chroma database;
+    class Langfuse obs;
 ```
 
 <details>
@@ -212,56 +207,56 @@ graph TD
     UI --> AgentMode
     UI --> UploadForm
 
-    RAGMode -->| "POST /rag" | RAGCtrl
-    AgentMode -->| "POST /agent/chat/stream" | AgentCtrl
-    UploadForm -->| "POST /upload" | UploadCtrl
+    RAGMode -->|POST /rag| RAGCtrl
+    AgentMode -->|POST /agent/chat/stream| AgentCtrl
+    UploadForm -->|POST /upload| UploadCtrl
 
     %% Routing inside Server
-    RAGCtrl -->| "Trigger" | RAGPipe
-    AgentCtrl -->| "Trigger" | AgentGraph
-    UploadCtrl -->| "1. Write files & registry" | LocalDocs
-    UploadCtrl -->| "2. Ingest into Chroma" | RAGPipe
+    RAGCtrl -->|Trigger| RAGPipe
+    AgentCtrl -->|Trigger| AgentGraph
+    UploadCtrl -->|Write files and registry| LocalDocs
+    UploadCtrl -->|Ingest into Chroma| RAGPipe
 
     %% Direct RAG Flow
-    RAGPipe -->| "Similarity Search" | Chroma
-    RAGPipe -->| "Prompt + Context" | GroqAPI
+    RAGPipe -->|Similarity Search| Chroma
+    RAGPipe -->|Prompt and Context| GroqAPI
 
     %% Agent Flow & Persistency
-    AgentGraph <-->| "Thread Persistency" | MemorySaver
-    AgentGraph -->| "Run Agent Execution" | LLMWrapper
-    LLMWrapper -->| "API Call" | GroqAPI
-    GroqAPI -->| "Tool call / response" | LLMWrapper
-    LLMWrapper -->| "Intercept LLM response" | PostHook
-    PostHook -->| "Apply validation & corrections" | AgentGraph
+    AgentGraph <-->|Thread Persistency| MemorySaver
+    AgentGraph -->|Run Agent Execution| LLMWrapper
+    LLMWrapper -->|API Call| GroqAPI
+    GroqAPI -->|Tool call and response| LLMWrapper
+    LLMWrapper -->|Intercept LLM response| PostHook
+    PostHook -->|Apply validation and corrections| AgentGraph
 
     %% Tools Wiring
-    AgentGraph -->| "Invoke" | RagSearchTool
-    AgentGraph -->| "Invoke" | RegTool
-    AgentGraph -->| "Invoke" | CalcTool
+    AgentGraph -->|Invoke| RagSearchTool
+    AgentGraph -->|Invoke| RegTool
+    AgentGraph -->|Invoke| CalcTool
 
     %% Tools Implementation details
-    RagSearchTool -->| "Semantic search query" | RAGPipe
-    RegTool -->| "Read registry" | RegistryServ
-    RegistryServ -->| "Query mapping" | MappingJSON
-    CalcTool -->| "Perform evaluation" | CalcTool
+    RagSearchTool -->|Semantic search query| RAGPipe
+    RegTool -->|Read registry| RegistryServ
+    RegistryServ -->|Query mapping| MappingJSON
+    CalcTool -->|Perform evaluation| CalcTool
 
     %% Local embed and db ingestion
-    RAGPipe -->| "Load documents" | LocalDocs
-    RAGPipe -->| "Tokenize & Vectorize" | LocalEmbed
-    LocalEmbed -->| "Upload vectors" | Chroma
+    RAGPipe -->|Load documents| LocalDocs
+    RAGPipe -->|Tokenize and Vectorize| LocalEmbed
+    LocalEmbed -->|Upload vectors| Chroma
 
     %% Observability Tracking
-    AgentGraph -.->| "Send execution callbacks" | CallbackHandler
-    CallbackHandler -.->| "Log Traces & Latency" | LangfuseCloud
+    AgentGraph -.->|Send execution callbacks| CallbackHandler
+    CallbackHandler -.->|Log Traces and Latency| LangfuseCloud
 
     %% Streaming Back to Client
-    AgentGraph -.->| "SSE Events:\n1. 'thinking' (Initial state)\n2. 'tool_call' (Tool input)\n3. 'stream' (Token chunks)\n4. 'tool_result' (Execution finished)\n5. 'final_response' (Done + Metadata)" | StreamHandler
-    StreamHandler -.->| "Update Chat State" | UI
+    AgentGraph -.->| "SSE Events (thinking, stream, tool_call, final_response)" | StreamHandler
+    StreamHandler -.->|Update Chat State| UI
 
     %% Ingestion loop
-    RAGPipe -->| "Startup load & re-ingest" | LocalDocs
-    RAGPipe -->| "Vectorize chunks" | LocalEmbed
-    LocalEmbed -->| "Upload embeddings" | Chroma
+    RAGPipe -->|Startup load and re-ingest| LocalDocs
+    RAGPipe -->|Vectorize chunks| LocalEmbed
+    LocalEmbed -->|Upload embeddings| Chroma
 
     %% Styling maps
     class UI,RAGMode,AgentMode,UploadForm,StreamHandler frontend;
