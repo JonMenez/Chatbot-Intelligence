@@ -149,7 +149,7 @@ graph TD
 ```mermaid
 %%{init: {"flowchart": {"htmlLabels": false}}}%%
 graph TD
-    %% Styling and colors
+    %% Styling
     classDef frontend fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc;
     classDef backend fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#f8fafc;
     classDef agent fill:#3b0764,stroke:#c084fc,stroke-width:2px,color:#f8fafc;
@@ -158,51 +158,56 @@ graph TD
     classDef obs fill:#042f2e,stroke:#2dd4bf,stroke-width:2px,color:#f8fafc;
     classDef highlight fill:#701a75,stroke:#f472b6,stroke-width:3px,color:#f8fafc;
 
-    %% Nodes Definitions
-    subgraph FrontendSpace ["Client Layer (React Frontend)"]
-        UI["React Web UI (Ethereal App)"]:::frontend
-        RAGMode["RAG Mode Page\n(Direct document QA)"]:::frontend
-        AgentMode["Agent Mode Page\n(Multi-tool interaction)"]:::frontend
-        UploadForm["Upload Form\n(Manage Knowledge Base)"]:::frontend
-        StreamHandler["SSE Client Reader\n(Live updates stream)"]:::frontend
+    %% Layer 1: Client
+    subgraph Client ["Client Layer (React)"]
+        UI["React Web UI"]:::frontend
+        RAGMode["RAG Mode Page\n(Direct QA)"]:::frontend
+        AgentMode["Agent Mode Page\n(Multi-tool)"]:::frontend
+        UploadForm["Upload Form"]:::frontend
+        StreamHandler["SSE Stream Handler\n(Events: thinking, tool_call, stream, final_response)"]:::frontend
     end
 
-    subgraph ServerSpace ["Server Layer (Express Backend)"]
-        API["Express Router (server.js)"]:::backend
-        RAGCtrl["RAG Controller\n(ragController.js)"]:::backend
-        AgentCtrl["Agent Controller\n(agentController.js)"]:::backend
-        UploadCtrl["Upload Controller\n(uploadController.js)"]:::backend
+    %% Layer 2: Server
+    subgraph Server ["Server Layer (Express)"]
+        API["Express Router"]:::backend
+        RAGCtrl["RAG Controller"]:::backend
+        AgentCtrl["Agent Controller"]:::backend
+        UploadCtrl["Upload Controller"]:::backend
     end
 
-    subgraph OrchestrationSpace ["Layer 3: Orchestration Layer (LangGraph & Pipelines)"]
-        RAGPipe["Direct RAG Pipeline\n(ragService.js)"]:::backend
+    %% Layer 3: Orchestration (LangGraph)
+    subgraph Orchestration ["Orchestration Layer (LangGraph)"]
+        RAGPipe["Direct RAG Pipeline"]:::backend
         AgentGraph["LangGraph Orchestrator\n(createReactAgent)"]:::highlight
-        MemorySaver["Checkpointer Memory\n(MemorySaver thread_id)"]:::agent
-        PostHook["postModelHook (Self-Correction)\n- Resolves Hallucinated Tool Aliases\n- Sanitizes Raw Arguments\n- Detects & Breaks Infinite Loops"]:::highlight
-        LLMWrapper["Groq Client Wrapper\n(Retries API tool-calling errors)"]:::agent
-        GroqAPI["Groq Cloud LLM\n(llama-3.3-70b-versatile)"]:::agent
+        MemorySaver["Checkpointer\n(MemorySaver + thread_id)"]:::agent
+        PostHook["postModelHook\n(Self-Correction + Loop Breaking)"]:::highlight
+        LLMWrapper["Groq Client Wrapper\n(Retries on tool-call errors)"]:::agent
+        GroqAPI["Groq LLM\n(llama-3.3-70b-versatile)"]:::agent
     end
 
-    subgraph ToolsSpace ["Layer 4: Agent Tools & Core Services"]
-        RagSearchTool["ragSearchTool\n(ragSearchTool.js)"]:::tools
-        RegTool["registryTool\n(registryTool.js)"]:::tools
-        CalcTool["calculatorTool\n(calculatorTool.js)"]:::tools
-        RegistryServ["Registry Service\n(registryService.js)"]:::backend
+    %% Layer 4: Tools
+    subgraph Tools ["Agent Tools"]
+        RagSearchTool["ragSearchTool"]:::tools
+        RegTool["registryTool"]:::tools
+        CalcTool["calculatorTool"]:::tools
+        RegistryServ["Registry Service"]:::backend
     end
 
-    subgraph DataSpace ["Layer 5: Data & Embedding Layer"]
-        LocalDocs["backend/documents/\n(Local PDF/TXT Files)"]:::database
-        MappingJSON["_registry.json\n(Original to disk name registry)"]:::database
-        LocalEmbed["Local Embedding Model\n(Xenova/all-MiniLM-L6-v2)"]:::database
-        Chroma["ChromaDB Container\n(chatbot_knowledge collection)"]:::database
+    %% Layer 5: Data
+    subgraph Data ["Data & Embeddings Layer"]
+        LocalDocs["backend/documents/"]:::database
+        LocalEmbed["Local Embeddings\n(all-MiniLM-L6-v2)"]:::database
+        Chroma["ChromaDB"]:::database
     end
 
-    subgraph ObsSpace ["Layer 6: Observability Layer (Langfuse Tracing)"]
-        CallbackHandler["Langfuse Callback Handler\n(langfuse-langchain Handler)"]:::highlight
-        LangfuseCloud["Langfuse Dashboard\n(Traces, latency, tokens, session IDs)"]:::obs
+    %% Layer 6: Observability
+    subgraph Observability ["Observability (Langfuse)"]
+        CallbackHandler["Langfuse Callback Handler"]:::highlight
+        LangfuseCloud["Langfuse Dashboard"]:::obs
     end
 
-    %% Wiring client interface to endpoints
+    %% === Connections ===
+
     UI --> RAGMode
     UI --> AgentMode
     UI --> UploadForm
@@ -211,59 +216,51 @@ graph TD
     AgentMode -->|POST /agent/chat/stream| AgentCtrl
     UploadForm -->|POST /upload| UploadCtrl
 
-    %% Routing inside Server
-    RAGCtrl -->|Trigger| RAGPipe
-    AgentCtrl -->|Trigger| AgentGraph
-    UploadCtrl -->|Write files and registry| LocalDocs
-    UploadCtrl -->|Ingest into Chroma| RAGPipe
+    RAGCtrl --> RAGPipe
+    AgentCtrl --> AgentGraph
+    UploadCtrl -->|Save files| LocalDocs
+    UploadCtrl -->|Ingest| RAGPipe
 
-    %% Direct RAG Flow
+    %% RAG Flow
     RAGPipe -->|Similarity Search| Chroma
-    RAGPipe -->|Prompt and Context| GroqAPI
 
-    %% Agent Flow & Persistency
+    %% Agent Flow
     AgentGraph <-->|Thread Persistency| MemorySaver
-    AgentGraph -->|Run Agent Execution| LLMWrapper
-    LLMWrapper -->|API Call| GroqAPI
-    GroqAPI -->|Tool call and response| LLMWrapper
-    LLMWrapper -->|Intercept LLM response| PostHook
-    PostHook -->|Apply validation and corrections| AgentGraph
+    AgentGraph --> LLMWrapper
+    LLMWrapper --> GroqAPI
+    GroqAPI --> LLMWrapper
+    LLMWrapper --> PostHook
+    PostHook -->|Apply corrections| AgentGraph
 
-    %% Tools Wiring
-    AgentGraph -->|Invoke| RagSearchTool
-    AgentGraph -->|Invoke| RegTool
-    AgentGraph -->|Invoke| CalcTool
+    %% Tool execution
+    AgentGraph --> RagSearchTool
+    AgentGraph --> RegTool
+    AgentGraph --> CalcTool
 
-    %% Tools Implementation details
-    RagSearchTool -->|Semantic search query| RAGPipe
-    RegTool -->|Read registry| RegistryServ
-    RegistryServ -->|Query mapping| MappingJSON
-    CalcTool -->|Perform evaluation| CalcTool
+    RagSearchTool --> RAGPipe
+    RegTool --> RegistryServ
+    CalcTool --> CalcTool
 
-    %% Local embed and db ingestion
-    RAGPipe -->|Load documents| LocalDocs
-    RAGPipe -->|Tokenize and Vectorize| LocalEmbed
-    LocalEmbed -->|Upload vectors| Chroma
+    %% Data ingestion
+    RAGPipe -->|Load & Vectorize| LocalEmbed
+    LocalEmbed -->|Store| Chroma
+    RAGPipe -->|Re-ingest on startup| LocalDocs
 
-    %% Observability Tracking
-    AgentGraph -.->|Send execution callbacks| CallbackHandler
-    CallbackHandler -.->|Log Traces and Latency| LangfuseCloud
+    %% Observability
+    AgentGraph -.->|Callbacks| CallbackHandler
+    CallbackHandler -.->|Traces| LangfuseCloud
 
-    %% Streaming Back to Client
-    AgentGraph -.->| "SSE Events (thinking, stream, tool_call, final_response)" | StreamHandler
-    StreamHandler -.->|Update Chat State| UI
+    %% Streaming (CORREGIDO)
+    AgentGraph -.->|Streaming SSE| StreamHandler
+    StreamHandler -.->|Update UI| UI
+    RAGPipe -.->|Response| UI
 
-    %% Ingestion loop
-    RAGPipe -->|Startup load and re-ingest| LocalDocs
-    RAGPipe -->|Vectorize chunks| LocalEmbed
-    LocalEmbed -->|Upload embeddings| Chroma
-
-    %% Styling maps
+    %% Styling
     class UI,RAGMode,AgentMode,UploadForm,StreamHandler frontend;
     class API,RAGCtrl,AgentCtrl,UploadCtrl,RAGPipe,RegistryServ backend;
     class AgentGraph,MemorySaver,PostHook,LLMWrapper,GroqAPI agent;
     class RagSearchTool,RegTool,CalcTool tools;
-    class LocalDocs,MappingJSON,LocalEmbed,Chroma database;
+    class LocalDocs,LocalEmbed,Chroma database;
     class CallbackHandler,LangfuseCloud obs;
 ```
 
