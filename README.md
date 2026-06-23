@@ -250,7 +250,7 @@ graph TD
     AgentGraph -.->|Callbacks| CallbackHandler
     CallbackHandler -.->|Traces| LangfuseCloud
 
-    %% Streaming (CORREGIDO)
+    %% Streaming
     AgentGraph -.->|Streaming SSE| StreamHandler
     StreamHandler -.->|Update UI| UI
     RAGPipe -.->|Response| UI
@@ -268,22 +268,31 @@ graph TD
 
 ### 🔑 Key Technical Decisions & Resilience Mechanisms
 
-To bridge the gap between prototype and production readiness, we implemented several key safety patterns in the backend:
+Ethereal is built around 5 main architectural pillars designed to make the AI agent robust, efficient, and monitorable in a production-like environment:
 
-1. **`postModelHook` for Agent Self-Correction & Loop Breaking**:
-   - **Alias Mapping**: Prevents errors when the LLM hallucinates tool names (e.g., mapping `calc`, `math` to `calculator_tool`).
-   - **Arguments Sanitization**: Normalizes cases where Groq calls a tool with a plain string instead of the structured JSON schema (e.g. mapping `"10*5"` to `{expression: "10*5"}`).
-   - **Loop Breaking**: Detects if the agent tries to repeatedly call the same tool with the exact same arguments in a single conversation. If a loop is caught, it clears the tool calls list and falls back to using the previous tool output to formulate a text response.
-2. **Groq LLM Client Wrapper for Retry Logic**:
-   - Groq sometimes returns a `400 BadRequestError` (with messages like `tool_use_failed` or `Failed to call a function`) due to formatting quirks. We wrapped the `ChatGroq` client to intercept these errors and automatically retry up to 3 times before failing.
-3. **Local Embedding Generation**:
-   - Rather than relying on paid OpenAI/Cohere API endpoints, the backend generates document embeddings locally using HuggingFace's `@xenova/transformers` with the `all-MiniLM-L6-v2` model running directly in Node.js. This ensures zero API costs for RAG operations.
-4. **SSE Streaming for Real-Time Interaction**:
-   - Utilizing Server-Sent Events (SSE) to stream tokens as they are generated, along with `thinking` and `tool_call` state updates, giving the user instant feedback on the agent's reasoning steps.
-5. **Full Observability with Langfuse**:
-   - The agent service is fully instrumented with the `langfuse-langchain` SDK. It records all traces, sessions (mapped via thread IDs), latency metrics, tool execution details, and LLM costs.
-6. **Thread-Persistent Memory**:
-   - Configured with LangGraph's `MemorySaver` checkpointer, enabling persistent, thread-safe session history across restarts.
+#### 1. Agentic Loops & State Management (LangGraph)
+* **Context**: Traditional chain-based architectures (like standard LangChain) are linear and struggle with multi-step reasoning, where the output of a tool determines the next action.
+* **Solution**: We implemented **LangGraph** to model the execution flow as a cyclic State Graph. This allows the model to run in loops (analyze -> invoke tool -> observe result -> decide next step or respond), providing a robust framework for complex task completion.
+* **Memory**: Configured with `MemorySaver` checkpointer, allowing thread-safe session history persistence natively indexed by `thread_id`.
+
+#### 2. LLM Self-Correction & Loop Breaking (`postModelHook`)
+* **Context**: Smaller open-source models (like Llama-3 running on Groq) are cost-effective but prone to formatting errors, hallucinating tool names, or entering infinite loops when they can't answer.
+* **Solution**: A custom hook `postModelHook` intercepts the LLM's response *before* executing tools:
+  * **Alias Mapping**: Automatically translates hallucinated names (e.g., `calc` or `math` are corrected to `calculator_tool`).
+  * **Arguments Sanitization**: Normalizes inputs (e.g., converting a raw string argument into the structured JSON schema defined by Zod).
+  * **Loop Prevention**: Detects if the model calls the same tool with identical arguments. If a loop is detected, it cancels the call, injects the last known tool output, and forces a text response.
+
+#### 3. Fault-Tolerant Client Wrapper (Groq API Retries)
+* **Context**: Remote LLM endpoints sometimes reject calls with `400 BadRequestError` (such as `tool_use_failed` or validation errors) due to subtle syntax variance.
+* **Solution**: Implemented a wrapper around the `ChatGroq` client that intercepts 400 errors and automatically performs up to 3 exponential retries for failed model invocations before failing gracefully.
+
+#### 4. Cost-Effective Local Embeddings (ONNX Runtime)
+* **Context**: Generating text embeddings through commercial APIs (e.g., OpenAI, Cohere) introduces external costs, network overhead, and latency.
+* **Solution**: The backend runs embeddings locally using `@xenova/transformers` with the `all-MiniLM-L6-v2` model. Under the hood, this compiles to ONNX and executes within the Node.js runtime environment (via libuv thread pool), ensuring zero API costs and fast vector generation for the local document directory.
+
+#### 5. Real-Time Streaming SSE & Enterprise Observability
+* **Streaming**: Implemented Server-Sent Events (SSE) `/agent/chat/stream` to stream tokens in real-time. Crucially, it streams intermediate steps (`thinking` state, `tool_call`, and `tool_result`), improving UX transparency.
+* **Observability**: Fully integrated with **Langfuse** using the `langfuse-langchain` callback handler. Every trace, latency, token count, execution path, and cost is logged for monitoring and profiling.
 
 ---
 
