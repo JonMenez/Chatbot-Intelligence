@@ -1,6 +1,7 @@
-require('dotenv').config();
-const { initRag } = require('./src/services/ragService');
-const { createMainAgent } = require('./src/agents/mainAgent');
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '.env') });
+const { initRag } = require('#services/ragService');
+const { createMainAgent } = require('#agents/mainAgent');
 const { HumanMessage } = require('@langchain/core/messages');
 
 async function runTests() {

@@ -16,7 +16,7 @@ services:
       - "3001:3001"
     environment:
       - CHROMA_URL=http://chromadb:8000
-    # Usa variables nativas de tu Mac
+    # Use native environment variables from your Mac
     env_file:
       - ./backend/.env
     volumes:

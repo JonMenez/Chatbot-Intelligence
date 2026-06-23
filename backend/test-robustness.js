@@ -118,7 +118,7 @@ async function testRobustness() {
   console.log("\n--- Test 4: Invalid Tool Calls Promotion ---");
   const state4 = {
     messages: [
-      new HumanMessage("que tenemos en la base de conocimiento"),
+      new HumanMessage("what do we have in the knowledge base"),
       new AIMessage({
         content: "",
         tool_calls: [],

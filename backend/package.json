@@ -3,6 +3,12 @@
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
+  "imports": {
+    "#services/*": "./src/services/*.js",
+    "#tools/*": "./src/tools/*.js",
+    "#config/*": "./src/config/*.js",
+    "#agents/*": "./src/agents/*.js"
+  },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "CHROMA_URL=http://localhost:8000 npm run dev",

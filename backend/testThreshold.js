@@ -1,47 +1,48 @@
-require('dotenv').config();
-const { initRag, answerWithRag } = require('./src/services/ragService');
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '.env') });
+const { initRag, answerWithRag } = require('#services/ragService');
 
 async function runTest() {
   console.log("=========================================");
-  console.log("🧪 INICIANDO TEST DEL UMBRAL RAG (0.75) 🧪");
+  console.log("🧪 STARTING RAG THRESHOLD TEST (0.75) 🧪");
   console.log("=========================================");
   
-  // 1. Inicializar RAG (escaneará la carpeta backend/documents y se conectará a Chroma)
+  // 1. Initialize RAG (scans backend/documents folder and connects to Chroma)
   await initRag();
   
   console.log("\n-----------------------------------------");
-  console.log("📌 PREGUNTA 1: Una pregunta DENTRO del contexto (Pingüinos)");
+  console.log("📌 QUESTION 1: A question INSIDE the context (Penguins)");
   console.log("-----------------------------------------");
   try {
-    const res1 = await answerWithRag("¿Dónde viven los pingüinos emperador y a qué temperaturas se enfrentan?");
-    console.log("\n🤖 RESPUESTA DE GROQ:");
+    const res1 = await answerWithRag("Where do emperor penguins live and what temperatures do they face?");
+    console.log("\n🤖 GROQ RESPONSE:");
     console.log(res1.reply);
-    console.log("\n📊 MÉTRICAS:");
-    console.log(`Confianza: ${res1.confidence.toFixed(2)}`);
-    console.log(`Documentos superaron el umbral (0.75): ${res1.metadata.documentsRetrieved}`);
+    console.log("\n📊 METRICS:");
+    console.log(`Confidence: ${res1.confidence.toFixed(2)}`);
+    console.log(`Documents that passed threshold (0.75): ${res1.metadata.documentsRetrieved}`);
   } catch (error) {
-    console.error("Error en Pregunta 1:", error.message);
+    console.error("Error in Question 1:", error.message);
   }
 
   console.log("\n-----------------------------------------");
-  console.log("📌 PREGUNTA 2: Una pregunta FUERA del contexto (React Router)");
+  console.log("📌 QUESTION 2: A question OUTSIDE the context (React Router)");
   console.log("-----------------------------------------");
   try {
-    // Al no haber documentos sobre React Router, Chroma podría retornar documentos sobre pingüinos
-    // pero con un score bajo (ej. 0.3 o 0.4). Nuestro filtro de 0.75 debería bloquearlos
-    // y forzar la regla anti-alucinación!
-    const res2 = await answerWithRag("¿Cómo instalo React Router en un proyecto Vite?");
-    console.log("\n🤖 RESPUESTA DE GROQ:");
-    console.log(res2.reply); // Debería decir: "No relevant information found..."
-    console.log("\n📊 MÉTRICAS:");
-    console.log(`Confianza: ${res2.confidence.toFixed(2)}`);
-    console.log(`Documentos superaron el umbral (0.75): ${res2.metadata.documentsRetrieved}`);
+    // Since there are no documents about React Router, Chroma might return penguin documents
+    // but with a low score (e.g. 0.3 or 0.4). Our 0.75 threshold filter should block them
+    // and trigger the anti-hallucination guardrail!
+    const res2 = await answerWithRag("How do I install React Router in a Vite project?");
+    console.log("\n🤖 GROQ RESPONSE:");
+    console.log(res2.reply); // Should output: "No relevant information found..."
+    console.log("\n📊 METRICS:");
+    console.log(`Confidence: ${res2.confidence.toFixed(2)}`);
+    console.log(`Documents that passed threshold (0.75): ${res2.metadata.documentsRetrieved}`);
   } catch (error) {
-    console.error("Error en Pregunta 2:", error.message);
+    console.error("Error in Question 2:", error.message);
   }
 }
 
 runTest().then(() => {
-  console.log("\n✅ Test finalizado.");
+  console.log("\n✅ Test completed.");
   process.exit(0);
 });

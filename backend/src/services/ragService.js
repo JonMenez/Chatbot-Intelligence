@@ -5,8 +5,9 @@ const { RecursiveCharacterTextSplitter } = require('@langchain/textsplitters');
 const { Chroma } = require('@langchain/community/vectorstores/chroma');
 const { PDFLoader } = require("@langchain/community/document_loaders/fs/pdf");
 const { HuggingFaceTransformersEmbeddings } = require('@langchain/community/embeddings/huggingface_transformers');
-const { getGroqClient, isGroqReady } = require('../config/groq');
-const registryService = require('./registryService');
+const { getGroqClient, isGroqReady } = require('#config/groq');
+const registryService = require('#services/registryService');
+const { expandQuery } = require('#services/queryExpander');
 
 // ============================================================================
 // CONFIGURATION & CONSTANTS
@@ -526,7 +527,8 @@ async function searchKnowledgeBase(query, k = RETRIEVAL_CONFIG.k) {
     throw new Error('Vector store is not initialized yet.');
   }
   
-  const vectorResults = await vectorStore.similaritySearchWithScore(query, k);
+  const expandedQuery = await expandQuery(query);
+  const vectorResults = await vectorStore.similaritySearchWithScore(expandedQuery, k);
   
   // Apply Similarity Score Filtering rule
   const scoredDocs = vectorResults.map(([doc, score]) => ({
@@ -573,7 +575,8 @@ async function answerWithRag(message, chatHistory = []) {
 
   try {
     // STEP 1: Retrieve relevant documents (using .similaritySearchWithScore for MemoryVectorStore)
-    const vectorResults = await vectorStore.similaritySearchWithScore(message, RETRIEVAL_CONFIG.k);
+    const expandedQuery = await expandQuery(message);
+    const vectorResults = await vectorStore.similaritySearchWithScore(expandedQuery, RETRIEVAL_CONFIG.k);
     
     // Apply Similarity Score Filtering rule
     // LangChain MemoryVectorStore directly provides cosine similarity score (1 being exactly identical)
@@ -595,7 +598,7 @@ async function answerWithRag(message, chatHistory = []) {
     const retrievalTime = Date.now() - startTime;
 
     // IMPROVEMENT #3: Detailed logging
-    logger.debug(`Retrieved ${vectorResults.length} docs, ${relevantDocs.length} passed threshold for query: "${message.substring(0, 60)}..."`);
+    logger.debug(`Retrieved ${vectorResults.length} docs, ${relevantDocs.length} passed threshold for query: "${message.substring(0, 60)}..." (Expanded: "${expandedQuery.substring(0, 60)}...")`);
     relevantDocs.forEach((doc, i) => {
       const source = doc.metadata.source;
       const chunk = doc.metadata.chunk > 0 ? `, Chunk ${doc.metadata.chunk}` : '';
@@ -682,7 +685,8 @@ async function answerWithRagStream(message, chatHistory = [], res) {
 
   try {
     // STEP 1: Retrieve relevant documents
-    const vectorResults = await vectorStore.similaritySearchWithScore(message, RETRIEVAL_CONFIG.k);
+    const expandedQuery = await expandQuery(message);
+    const vectorResults = await vectorStore.similaritySearchWithScore(expandedQuery, RETRIEVAL_CONFIG.k);
     
     logger.debug(`[answerWithRagStream] Raw vectorResults for query: "${message}"`);
     vectorResults.forEach(([doc, score], i) => {
