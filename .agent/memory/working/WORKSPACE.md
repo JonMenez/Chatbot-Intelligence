@@ -1,22 +1,24 @@
 # Workspace (live task state)
 
 ## Current task
-- Implement Query Expansion in the RAG pipeline.
+- Implement Self-Critique layer for the Ethereal agent.
 
 ## Open files
-- [queryExpander.js](file:///Users/home/Documents/chatbot-ai/backend/src/services/queryExpander.js)
-- [ragService.js](file:///Users/home/Documents/chatbot-ai/backend/src/services/ragService.js)
-- [test-query-expansion.js](file:///Users/home/Documents/chatbot-ai/backend/test-query-expansion.js)
+- [selfCritiqueService.js](file:///Users/home/Documents/chatbot-ai/backend/src/services/selfCritiqueService.js)
+- [agentService.js](file:///Users/home/Documents/chatbot-ai/backend/src/services/agentService.js)
+- [test-robustness.js](file:///Users/home/Documents/chatbot-ai/backend/test-robustness.js)
 
 ## Active hypotheses
-- Incorporating synonyms in similarity searches increases the likelihood of retrieving relevant document chunks when user queries use colloquial or non-exact matches.
+- Two-phase architecture (agent.invoke + critique.stream) provides cleaner separation than intercepting LangGraph stream events.
 
 ## Checkpoints
-- [x] Create helper service `queryExpander.js` containing synonym dictionary.
-- [x] Integrate query expansion into `ragService.js` similarity search points.
-- [x] Implement automated unit & integration tests (`test-query-expansion.js`).
-- [x] Run and pass all verification tests without regression.
-- [x] Create walkthrough and document extensibility options.
+- [x] Create selfCritiqueService.js with streaming and sync critique functions.
+- [x] Rewrite agentService.js runAgentStream to two-phase flow.
+- [x] Add critique step to runAgentChat.
+- [x] Add Self-Critique unit tests to test-robustness.js.
+- [x] Run and pass all 25 tests (13 postModelHook + 12 Self-Critique).
+- [x] Clean up scratch files.
+- [x] Create walkthrough.
 
 ## Next step
-- Present final implementation to user.
+- Run integration test (test-agent.js) when GROQ_API_KEY and ChromaDB are available.

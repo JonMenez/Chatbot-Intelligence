@@ -165,6 +165,8 @@ function postModelHook(state) {
             if (name === "calculator_tool" && content.includes("Result of ")) {
               const parts = content.split(" = ");
               if (parts.length > 1) content = parts[1];
+            } else if (name === "search_knowledge_base") {
+              content = "I already searched the knowledge base with this query. I will formulate my answer based on the conversation history instead of searching again.";
             }
             fallbackContent = content;
             break;
@@ -227,6 +229,8 @@ function createMainAgent() {
 
   const systemPrompt = `You are Ethereal, an intelligent AI Assistant.
 You have access to tools that can search the knowledge base, list available documents in the registry, and perform mathematical calculations.
+
+When the user engages in casual conversation, shares personal preferences, or asks about things already discussed in the chat history, you must answer naturally using your conversational memory. Do NOT use the search_knowledge_base tool for these casual interactions. ONLY use the search_knowledge_base tool when you explicitly need to retrieve technical documents, external factual data, or files.
 
 Answer the user's queries concisely and accurately. Respond directly with the final answer when you have it. If you don't know the answer, just say so.
 

@@ -141,12 +141,137 @@ async function testRobustness() {
   }
 
   console.log("\n======================================================");
-  console.log(`📊 UNIT TEST SUMMARY: ${successCount} PASSED, ${failCount} FAILED`);
+  console.log(`📊 postModelHook TESTS: ${successCount} PASSED, ${failCount} FAILED`);
   console.log("======================================================");
   
-  if (failCount > 0) {
+  return { successCount, failCount };
+}
+
+// ============================================================
+// Self-Critique Unit Tests
+// ============================================================
+
+const { buildCritiqueMessages, CRITIQUE_SYSTEM_PROMPT } = require('./src/services/selfCritiqueService');
+
+async function testSelfCritique() {
+  console.log("\n======================================================");
+  console.log("🧪 RUNNING SELF-CRITIQUE UNIT TESTS");
+  console.log("======================================================\n");
+
+  let successCount = 0;
+  let failCount = 0;
+
+  function assert(condition, message) {
+    if (condition) {
+      console.log(`✅ PASS: ${message}`);
+      successCount++;
+    } else {
+      console.error(`❌ FAIL: ${message}`);
+      failCount++;
+    }
+  }
+
+  // --- TEST 5: buildCritiqueMessages produces correct structure ---
+  console.log("--- Test 5: buildCritiqueMessages Structure ---");
+  const conversationMessages = [
+    new HumanMessage("What is the capital of France?"),
+    new AIMessage({ content: "", tool_calls: [{ name: "search_knowledge_base", args: { query: "capital of France" }, id: "c1", type: "tool_call" }] }),
+    new ToolMessage({ name: "search_knowledge_base", content: "Paris is the capital of France.", tool_call_id: "c1" }),
+    new AIMessage({ content: "The capital of France is Paris." }),
+  ];
+
+  const critiqueMessages = buildCritiqueMessages(conversationMessages, "The capital of France is Paris.");
+  assert(critiqueMessages.length === 2, "buildCritiqueMessages returns 2 messages (system + human)");
+  assert(critiqueMessages[0].content === CRITIQUE_SYSTEM_PROMPT, "First message is the system critique prompt");
+  assert(critiqueMessages[1].content.includes("[User]: What is the capital of France?"), "Human message includes user query");
+  assert(critiqueMessages[1].content.includes("[Tool Result — search_knowledge_base]: Paris is the capital of France."), "Human message includes tool results for context verification");
+  assert(critiqueMessages[1].content.includes("PROPOSED RESPONSE:\nThe capital of France is Paris."), "Human message includes proposed response");
+
+  // --- TEST 6: streamSelfCritique fallback on error ---
+  console.log("\n--- Test 6: streamSelfCritique Fallback on Error ---");
+  // We test the fallback behavior by temporarily overriding the module's internal
+  // createCritiqueLlm. Since we can't easily mock internal functions, we test
+  // the exported contract: if GROQ_API_KEY is invalid, it should still yield the original.
+  const originalKey = process.env.GROQ_API_KEY;
+  process.env.GROQ_API_KEY = "invalid_key_for_testing_fallback";
+
+  const { streamSelfCritique } = require('./src/services/selfCritiqueService');
+  const fallbackMessages = [
+    new HumanMessage("Test question"),
+    new AIMessage({ content: "Original response that should be preserved." }),
+  ];
+
+  let fallbackResult = '';
+  for await (const chunk of streamSelfCritique(fallbackMessages, "Original response that should be preserved.")) {
+    fallbackResult += chunk;
+  }
+
+  assert(
+    fallbackResult === "Original response that should be preserved.",
+    "streamSelfCritique returns original response on API failure (fallback)"
+  );
+
+  // Restore the original key
+  process.env.GROQ_API_KEY = originalKey;
+
+  // --- TEST 7: runSelfCritique fallback on error ---
+  console.log("\n--- Test 7: runSelfCritique Fallback on Error ---");
+  process.env.GROQ_API_KEY = "invalid_key_for_testing_fallback";
+
+  // Clear the module cache so it picks up the new invalid key
+  delete require.cache[require.resolve('./src/services/selfCritiqueService')];
+  const { runSelfCritique } = require('./src/services/selfCritiqueService');
+
+  const syncResult = await runSelfCritique(
+    fallbackMessages,
+    "Sync original response."
+  );
+
+  assert(syncResult.correctedResponse === "Sync original response.", "runSelfCritique returns original response on API failure");
+  assert(syncResult.applied === false, "runSelfCritique sets applied=false on API failure");
+
+  // Restore the original key
+  process.env.GROQ_API_KEY = originalKey;
+
+  // --- TEST 8: buildCritiqueMessages handles empty tool results ---
+  console.log("\n--- Test 8: buildCritiqueMessages with No Tools ---");
+  const simpleMessages = [
+    new HumanMessage("Hello!"),
+    new AIMessage({ content: "Hi there!" }),
+  ];
+
+  const simpleResult = buildCritiqueMessages(simpleMessages, "Hi there!");
+  assert(simpleResult.length === 2, "Returns 2 messages for simple conversation");
+  assert(!simpleResult[1].content.includes("[Tool Result"), "No tool results in simple conversation");
+  assert(simpleResult[1].content.includes("[User]: Hello!"), "Includes user message");
+  assert(simpleResult[1].content.includes("[Assistant]: Hi there!"), "Includes assistant message");
+
+  console.log("\n======================================================");
+  console.log(`📊 Self-Critique TESTS: ${successCount} PASSED, ${failCount} FAILED`);
+  console.log("======================================================");
+
+  return { successCount, failCount };
+}
+
+// ============================================================
+// Main Runner
+// ============================================================
+
+async function runAllTests() {
+  const hookResults = await testRobustness();
+  const critiqueResults = await testSelfCritique();
+
+  const totalSuccess = hookResults.successCount + critiqueResults.successCount;
+  const totalFail = hookResults.failCount + critiqueResults.failCount;
+
+  console.log("\n======================================================");
+  console.log(`📊 TOTAL: ${totalSuccess} PASSED, ${totalFail} FAILED`);
+  console.log("======================================================");
+
+  if (totalFail > 0) {
     process.exit(1);
   }
 }
 
-testRobustness().catch(console.error);
+runAllTests().catch(console.error);
+
