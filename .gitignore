@@ -29,5 +29,5 @@ backend/node_modules/
 # Documents
 documents
 
-# agentic-stack
-.agent/memory/.index/
+# Local coding-agent scaffolding (not part of the application)
+.agent/
