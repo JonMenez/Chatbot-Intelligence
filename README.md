@@ -1,410 +1,206 @@
-# Chatbot AI - Ethereal Intelligence v2.0
+# Ethereal Intelligence
 
-## 🚀 Quick Start
+A document-grounded RAG chatbot and a tool-using LangGraph agent, built as a portfolio project to demonstrate practical AI engineering: local embeddings, a custom tool-loop breaker, and a self-critique pass.
+
+**Live demo:** TODO — add a hosted URL here.
+
+## What it does
+
+The React UI (`frontend/src/hooks/useChat.js`) exposes two modes:
+
+- **RAG mode** — retrieve chunks from ChromaDB and answer only from that context, with source attribution and a heuristic confidence score.
+- **Agent mode** (default) — a LangGraph ReAct agent that can search the knowledge base, list uploaded documents, or run a sanitized calculator, then send the draft answer through a self-critique pass.
+
+### Implemented in this repository
+
+- **RAG pipeline** (`backend/src/services/ragService.js`): `RecursiveCharacterTextSplitter` (chunk size 1000, overlap 200), top-5 similarity search with a 0.20 score threshold, and dictionary-based query expansion (`backend/src/services/queryExpander.js`).
+- **Local embeddings + ChromaDB**: `Xenova/all-MiniLM-L6-v2` via `@langchain/community` Hugging Face Transformers embeddings; persistent collection `chatbot_knowledge` (cosine space). Chroma runs in Docker. Documents can also be ingested at runtime through `POST /upload`.
+- **LangGraph ReAct agent** (`backend/src/agents/mainAgent.js`): `createReactAgent` with three tools:
+  - `search_knowledge_base` — `backend/src/tools/ragSearchTool.js`
+  - `registry_tool` — `backend/src/tools/registryTool.js`
+  - `calculator_tool` — `backend/src/tools/calculatorTool.js` (input is sanitized; the expression is then evaluated with `new Function`)
+- **Loop-breaker and tool-call repair** — `postModelHook` in `backend/src/agents/mainAgent.js` (see below).
+- **Self-critique pass** — `backend/src/services/selfCritiqueService.js`, invoked from `backend/src/services/agentService.js`.
+- **SSE streaming** — in RAG mode, tokens are streamed as the model produces them (`answerWithRagStream`). In agent mode the flow is two-phase: the graph is invoked to completion, then the critiqued answer is streamed. The events the backend actually emits are `thinking`, `stream`, and `final_response`.
+- **Prompt-level grounding** — anti-hallucination instructions in the RAG system prompt when context is missing or below the similarity threshold.
+- **Optional Langfuse traces** — the `langfuse-langchain` callback in `agentService.js` is used when the Langfuse environment variables are set.
+- **Session memory** — LangGraph `MemorySaver` keyed by `thread_id`. This is in-memory only and does not survive a process restart.
+
+An LLM-as-a-judge helper (`evaluateRagResponse` in `ragService.js`) can score answer faithfulness, and a route is declared in `backend/src/routes/ragRoutes.js`, but **`server.js` does not mount `POST /rag/evaluate`**, so it is not reachable in the running app.
+
+## Stack
+
+| Layer | What this repository uses |
+| --- | --- |
+| Frontend | React 19, Vite, Tailwind CSS 4 (`frontend/`) |
+| Backend | Express 5, Node 20 (`backend/server.js`) |
+| Agent | LangGraph `createReactAgent` (ReAct) |
+| LLMs | Groq. Agent default: `llama-3.1-8b-instant` (`GROQ_MODEL` in `mainAgent.js`). Self-critique default: `llama-3.1-8b-instant` (`GROQ_CRITIQUE_MODEL`). Direct RAG pipeline: `llama-3.3-70b-versatile` (hardcoded in `LLM_CONFIG` inside `ragService.js`, not an env var). |
+| Embeddings | Local `all-MiniLM-L6-v2` (Xenova / ONNX) |
+| Vector store | ChromaDB (Docker), collection `chatbot_knowledge` |
+| Observability | Optional Langfuse |
+
+There is no MongoDB in this project.
+
+## Loop-breaker and self-critique
+
+**`postModelHook`** (`backend/src/agents/mainAgent.js`) runs after each model step, before tools execute. It:
+
+1. Maps hallucinated tool names (for example `calc`, `search`, or `registry`) to the real tool names.
+2. Normalizes arguments (a raw string becomes `{ expression }` or `{ query }` as required).
+3. Detects a loop: if the model is about to call the same tool with the same arguments as an earlier call in the thread, the hook drops that call, injects the last tool result (or a short fallback), and forces a text reply so the agent does not hang.
+
+The agent invocation also sets `recursionLimit: 20`. A small wrapper around the Groq client retries `400` / `tool_use_failed` errors up to three times.
+
+**Self-critique** is a second Groq call after the agent produces a draft. Using the conversation and any tool results as context, it either leaves the draft unchanged or rewrites it. If the critique times out or fails, the original draft is returned. In streaming agent mode, the user sees this critiqued text — not the raw tokens from the tool-calling loop.
+
+## Architecture
+
+```mermaid
+flowchart TD
+    UI["React UI"]
+    RAG["Direct RAG pipeline"]
+    Agent["LangGraph ReAct agent"]
+    Hook["postModelHook"]
+    Critique["Self-critique pass"]
+    Tools["search_knowledge_base / registry_tool / calculator_tool"]
+    Embed["Local embeddings all-MiniLM-L6-v2"]
+    Chroma["ChromaDB"]
+    Langfuse["Langfuse optional"]
+
+    UI -->|"POST /rag"| RAG
+    UI -->|"POST /agent/chat/stream"| Agent
+    UI -->|"POST /upload"| RAG
+    Agent --> Hook
+    Hook --> Agent
+    Agent --> Tools
+    Tools --> RAG
+    Agent --> Critique
+    RAG --> Embed
+    Embed --> Chroma
+    RAG --> Chroma
+    Agent -.-> Langfuse
+    RAG -.->|"SSE tokens"| UI
+    Critique -.->|"SSE thinking, stream, final_response"| UI
+```
+
+## Setup
 
 ### Requirements
-- Node.js 20+ (Strictly enforced via `.nvmrc` and `engines` for ONNX cross-platform compatibility)
+
+- Node.js 20+ (see `.nvmrc` and `engines` in each package)
 - npm 10+
-- Docker & Docker Compose (required for the ChromaDB Vector Database)
-- Groq API Key (configured in `/backend/.env`)
+- Docker and Docker Compose (required for ChromaDB)
+- A Groq API key
 
-### Installation
+### Environment files
+
+Copy the examples and fill in values. Do not commit `.env` files.
 
 ```bash
-# Backend
+cp backend/.env.example backend/.env
+cp frontend/.env.example frontend/.env
+```
+
+`GROQ_API_KEY` is required. Every other variable the code reads is optional and documented in those files. Docker Compose loads `backend/.env` and `frontend/.env`, and also sets `CHROMA_URL=http://chromadb:8000` on the backend service.
+
+### Method 1: Docker Compose (recommended)
+
+This starts the frontend, backend, and ChromaDB together.
+
+```bash
+# From the repository root
+docker compose up -d --build
+# Equivalent: docker-compose up -d --build
+```
+
+- UI: http://localhost:5173
+- API: http://localhost:3001
+
+Logs: `docker compose logs -f backend` (or `frontend` / `chromadb`). Stop with `docker compose down`.
+
+If a container fails because of stale anonymous `node_modules` volumes or an ONNX / Alpine linking error, reset with `docker compose down -v` and rebuild. The backend image must stay on a glibc base (`node:20-slim`); Alpine will break the local embedding runtime.
+
+### Method 2: Hybrid local mode (Node.js + Docker ChromaDB)
+
+ChromaDB still has to run in Docker for RAG to work.
+
+**Terminal 1 — ChromaDB (port 8000):**
+
+```bash
+docker run --name chatbot_chroma -p 8000:8000 -v "$(pwd)/chroma_data:/chroma/chroma" chromadb/chroma:latest
+```
+
+**Terminal 2 — Backend (port 3001):**
+
+```bash
 cd backend
 npm install
-
-# Frontend
-cd ../frontend
-npm install
-```
-
-### Execution
-
-There are two ways to run the Ethereal Intelligence infrastructure:
-
-#### Method 1: Using Docker Compose (Recommended)
-This approach automatically orchestrates the frontend, backend, and ChromaDB vector database flawlessly in the background using Linux Alpine/Slim sealed environments.
-
-```bash
-# From the root directory, rebuild and start all containers in detached mode:
-docker-compose up -d --build
-```
-Your UI will be instantly available at **http://localhost:5173**.
-
-* **Viewing Logs**: To watch logs for a specific service in real-time without locking your terminal, open a console in the root directory and run:
-  - `docker-compose logs -f backend` 
-  - `docker-compose logs -f frontend`
-  - `docker-compose logs -f chromadb`
-* **Shutting Down**: Cleanly stop everything using `docker-compose down`
-
-#### Method 2: Hybrid Local Mode (Node.js + Docker ChromaDB)
-If you prefer running Node.js locally without containerizing your Express/Vite servers, you still **must** run ChromaDB via Docker for the RAG system to work.
-
-**Terminal 1 - ChromaDB Vector Database (Port 8000):**
-```bash
-docker run --name chatbot_chroma -p 8000:8000 -v $(pwd)/chroma_data:/chroma/chroma chromadb/chroma:latest
-```
-
-**Terminal 2 - Backend (Port 3001):**
-```bash
-cd backend
 npm run dev
 ```
 
-**Terminal 3 - Frontend (Port 5173):**
+**Terminal 3 — Frontend (port 5173):**
+
 ```bash
 cd frontend
+npm install
 npm run dev
 ```
 
-Open **http://localhost:5173** in your browser.
-
----
-
-## 🏗️ Architecture & Technical Decisions
-
-Ethereal is built as a robust, production-grade agentic assistant leveraging LangGraph, Express, and ChromaDB. 
-
-Here is the **Simplified Architecture Flow** (ideal for a 2-minute interview overview):
-
-```mermaid
-%%{init: {"flowchart": {"htmlLabels": false}}}%%
-graph TD
-    %% Styling
-    classDef frontend fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc;
-    classDef backend fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#f8fafc;
-    classDef agent fill:#3b0764,stroke:#c084fc,stroke-width:2px,color:#f8fafc;
-    classDef database fill:#451a03,stroke:#fb923c,stroke-width:2px,color:#f8fafc;
-    classDef obs fill:#042f2e,stroke:#2dd4bf,stroke-width:2px,color:#f8fafc;
-    classDef highlight fill:#701a75,stroke:#f472b6,stroke-width:3px,color:#f8fafc;
-
-    %% Layers
-    subgraph Client ["Client Layer"]
-        UI["React Web UI"]:::frontend
-        RAGMode["RAG Mode Page\n(Direct document QA)"]:::frontend
-        AgentMode["Agent Mode Page\n(Multi-tool)"]:::frontend
-    end
-
-    subgraph Server ["Server Layer"]
-        RAGPipe["Direct RAG Service"]:::backend
-        AgentGraph["LangGraph Agent"]:::highlight
-        PostHook["postModelHook\n(Self-Correction + Loop Prevention)"]:::highlight
-    end
-
-    subgraph Tools ["Agent Tools"]
-        ToolList["ragSearchTool\nregistryTool\ncalculatorTool"]:::backend
-    end
-
-    subgraph Data ["Data Layer"]
-        Embeddings["Local Embeddings\n(all-MiniLM-L6-v2)"]:::database
-        Chroma["ChromaDB"]:::database
-    end
-
-    subgraph Observability ["Observability"]
-        Langfuse["Langfuse"]:::obs
-    end
-
-    %% Connections
-    UI --> RAGMode
-    UI --> AgentMode
-
-    RAGMode -->|POST /rag| RAGPipe
-    AgentMode -->|POST /agent/chat/stream| AgentGraph
-
-    %% RAG Flow
-    RAGPipe -->|Similarity Search| Chroma
-
-    %% Agent Flow
-    AgentGraph -->|LLM Response| PostHook
-    PostHook -->|Corrections| AgentGraph
-    AgentGraph -->|Invoke Tools| ToolList
-
-    %% Tool to RAG
-    ToolList -->|Semantic Search| RAGPipe
-
-    %% Ingestion
-    RAGPipe -->|Generate Vectors| Embeddings
-    Embeddings -->|Store| Chroma
-
-    %% Observability
-    AgentGraph -.->|Traces| Langfuse
-
-    %% Streaming
-    AgentGraph -.->|Streaming SSE| UI
-    RAGPipe -.->|Response| UI
-
-    %% Styling
-    class UI,RAGMode,AgentMode frontend;
-    class RAGPipe,ToolList backend;
-    class AgentGraph,PostHook agent;
-    class Embeddings,Chroma database;
-    class Langfuse obs;
-```
-
-<details>
-<summary>🔍 Click to view the Detailed Architecture Diagram (Detailed Components & Full SSE Data Flow)</summary>
-
-```mermaid
-%%{init: {"flowchart": {"htmlLabels": false}}}%%
-graph TD
-    %% Styling
-    classDef frontend fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc;
-    classDef backend fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#f8fafc;
-    classDef agent fill:#3b0764,stroke:#c084fc,stroke-width:2px,color:#f8fafc;
-    classDef tools fill:#14532d,stroke:#4ade80,stroke-width:2px,color:#f8fafc;
-    classDef database fill:#451a03,stroke:#fb923c,stroke-width:2px,color:#f8fafc;
-    classDef obs fill:#042f2e,stroke:#2dd4bf,stroke-width:2px,color:#f8fafc;
-    classDef highlight fill:#701a75,stroke:#f472b6,stroke-width:3px,color:#f8fafc;
-
-    %% Layer 1: Client
-    subgraph Client ["Client Layer (React)"]
-        UI["React Web UI"]:::frontend
-        RAGMode["RAG Mode Page\n(Direct QA)"]:::frontend
-        AgentMode["Agent Mode Page\n(Multi-tool)"]:::frontend
-        UploadForm["Upload Form"]:::frontend
-        StreamHandler["SSE Stream Handler\n(Events: thinking, tool_call, stream, final_response)"]:::frontend
-    end
-
-    %% Layer 2: Server
-    subgraph Server ["Server Layer (Express)"]
-        API["Express Router"]:::backend
-        RAGCtrl["RAG Controller"]:::backend
-        AgentCtrl["Agent Controller"]:::backend
-        UploadCtrl["Upload Controller"]:::backend
-    end
-
-    %% Layer 3: Orchestration (LangGraph)
-    subgraph Orchestration ["Orchestration Layer (LangGraph)"]
-        RAGPipe["Direct RAG Pipeline"]:::backend
-        AgentGraph["LangGraph Orchestrator\n(createReactAgent)"]:::highlight
-        MemorySaver["Checkpointer\n(MemorySaver + thread_id)"]:::agent
-        PostHook["postModelHook\n(Self-Correction + Loop Breaking)"]:::highlight
-        LLMWrapper["Groq Client Wrapper\n(Retries on tool-call errors)"]:::agent
-        GroqAPI["Groq LLM\n(llama-3.3-70b-versatile)"]:::agent
-    end
-
-    %% Layer 4: Tools
-    subgraph Tools ["Agent Tools"]
-        RagSearchTool["ragSearchTool"]:::tools
-        RegTool["registryTool"]:::tools
-        CalcTool["calculatorTool"]:::tools
-        RegistryServ["Registry Service"]:::backend
-    end
-
-    %% Layer 5: Data
-    subgraph Data ["Data & Embeddings Layer"]
-        LocalDocs["backend/documents/"]:::database
-        LocalEmbed["Local Embeddings\n(all-MiniLM-L6-v2)"]:::database
-        Chroma["ChromaDB"]:::database
-    end
-
-    %% Layer 6: Observability
-    subgraph Observability ["Observability (Langfuse)"]
-        CallbackHandler["Langfuse Callback Handler"]:::highlight
-        LangfuseCloud["Langfuse Dashboard"]:::obs
-    end
-
-    %% === Connections ===
-
-    UI --> RAGMode
-    UI --> AgentMode
-    UI --> UploadForm
-
-    RAGMode -->|POST /rag| RAGCtrl
-    AgentMode -->|POST /agent/chat/stream| AgentCtrl
-    UploadForm -->|POST /upload| UploadCtrl
-
-    RAGCtrl --> RAGPipe
-    AgentCtrl --> AgentGraph
-    UploadCtrl -->|Save files| LocalDocs
-    UploadCtrl -->|Ingest| RAGPipe
-
-    %% RAG Flow
-    RAGPipe -->|Similarity Search| Chroma
-
-    %% Agent Flow
-    AgentGraph <-->|Thread Persistency| MemorySaver
-    AgentGraph --> LLMWrapper
-    LLMWrapper --> GroqAPI
-    GroqAPI --> LLMWrapper
-    LLMWrapper --> PostHook
-    PostHook -->|Apply corrections| AgentGraph
-
-    %% Tool execution
-    AgentGraph --> RagSearchTool
-    AgentGraph --> RegTool
-    AgentGraph --> CalcTool
-
-    RagSearchTool --> RAGPipe
-    RegTool --> RegistryServ
-    CalcTool --> CalcTool
-
-    %% Data ingestion
-    RAGPipe -->|Load & Vectorize| LocalEmbed
-    LocalEmbed -->|Store| Chroma
-    RAGPipe -->|Re-ingest on startup| LocalDocs
-
-    %% Observability
-    AgentGraph -.->|Callbacks| CallbackHandler
-    CallbackHandler -.->|Traces| LangfuseCloud
-
-    %% Streaming
-    AgentGraph -.->|Streaming SSE| StreamHandler
-    StreamHandler -.->|Update UI| UI
-    RAGPipe -.->|Response| UI
-
-    %% Styling
-    class UI,RAGMode,AgentMode,UploadForm,StreamHandler frontend;
-    class API,RAGCtrl,AgentCtrl,UploadCtrl,RAGPipe,RegistryServ backend;
-    class AgentGraph,MemorySaver,PostHook,LLMWrapper,GroqAPI agent;
-    class RagSearchTool,RegTool,CalcTool tools;
-    class LocalDocs,LocalEmbed,Chroma database;
-    class CallbackHandler,LangfuseCloud obs;
-```
-
-</details>
-
-### 🔑 Key Technical Decisions & Resilience Mechanisms
-
-Ethereal is built around 5 main architectural pillars designed to make the AI agent robust, efficient, and monitorable in a production-like environment:
-
-#### 1. Agentic Loops & State Management (LangGraph)
-* **Context**: Traditional chain-based architectures (like standard LangChain) are linear and struggle with multi-step reasoning, where the output of a tool determines the next action.
-* **Solution**: We implemented **LangGraph** to model the execution flow as a cyclic State Graph. This allows the model to run in loops (analyze -> invoke tool -> observe result -> decide next step or respond), providing a robust framework for complex task completion.
-* **Memory**: Configured with `MemorySaver` checkpointer, allowing thread-safe session history persistence natively indexed by `thread_id`.
-
-#### 2. LLM Self-Correction & Loop Breaking (`postModelHook`)
-* **Context**: Smaller open-source models (like Llama-3 running on Groq) are cost-effective but prone to formatting errors, hallucinating tool names, or entering infinite loops when they can't answer.
-* **Solution**: A custom hook `postModelHook` intercepts the LLM's response *before* executing tools:
-  * **Alias Mapping**: Automatically translates hallucinated names (e.g., `calc` or `math` are corrected to `calculator_tool`).
-  * **Arguments Sanitization**: Normalizes inputs (e.g., converting a raw string argument into the structured JSON schema defined by Zod).
-  * **Loop Prevention**: Detects if the model calls the same tool with identical arguments. If a loop is detected, it cancels the call, injects the last known tool output, and forces a text response.
-
-#### 3. Fault-Tolerant Client Wrapper (Groq API Retries)
-* **Context**: Remote LLM endpoints sometimes reject calls with `400 BadRequestError` (such as `tool_use_failed` or validation errors) due to subtle syntax variance.
-* **Solution**: Implemented a wrapper around the `ChatGroq` client that intercepts 400 errors and automatically performs up to 3 exponential retries for failed model invocations before failing gracefully.
-
-#### 4. Cost-Effective Local Embeddings (ONNX Runtime)
-* **Context**: Generating text embeddings through commercial APIs (e.g., OpenAI, Cohere) introduces external costs, network overhead, and latency.
-* **Solution**: The backend runs embeddings locally using `@xenova/transformers` with the `all-MiniLM-L6-v2` model. Under the hood, this compiles to ONNX and executes within the Node.js runtime environment (via libuv thread pool), ensuring zero API costs and fast vector generation for the local document directory.
-
-#### 5. Real-Time Streaming SSE & Enterprise Observability
-* **Streaming**: Implemented Server-Sent Events (SSE) `/agent/chat/stream` to stream tokens in real-time. Crucially, it streams intermediate steps (`thinking` state, `tool_call`, and `tool_result`), improving UX transparency.
-* **Observability**: Fully integrated with **Langfuse** using the `langfuse-langchain` callback handler. Every trace, latency, token count, execution path, and cost is logged for monitoring and profiling.
-
----
-
-## 📋 Available Scripts
-
-### Backend (`/backend/package.json`)
-- `npm start` - Runs with Node.js (recommended)
-- `npm run dev` - Alias for `npm start`
-- `npm run dev:watch` - Runs with nodemon (requires local nodemon installation)
-
-### Frontend (`/frontend/package.json`)
-- `npm run dev` - Starts development server (Vite)
-- `npm run build` - Builds for production
-- `npm run preview` - Previews build
-
----
-
-## 🔧 Configuration
-
-### Backend (.env)
-```
-GROQ_API_KEY=your_api_key_here
-PORT=3001
-```
-
-### API Endpoints
-
-#### GET `/`
-Server status page (static HTML)
-
-#### GET `/health`
-Checks connection status
-```json
-{
-  "status": "ok",
-  "server": "running",
-  "groqReady": true,
-  "apiKeyConfigured": true,
-  "timestamp": "2024-03-24T10:00:00.000Z"
-}
-```
-
-#### POST `/chat`
-Sends a message and receives Groq response
-```bash
-curl -X POST http://localhost:3001/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message":"Hello, how do you work?"}'
-```
-
-Response:
-```json
-{
-  "reply": "I am an artificial intelligence interface..."
-}
-```
-
----
-
-## 🎨 UI Features
-
-- **Ethereal Design**: Glassmorphism with blur effects
-- **Dark Theme**: Custom color scheme with cyan accents (#59e7fc)
-- **Smooth Animations**: Fade-in, bounce, transitions
-- **Responsive**: Mobile-first design
-- **Accessibility**: Improved contrast, clear labels
-
----
-
-## 🐛 Troubleshooting
-
-### Backend doesn't work but I can start it
-
-1. **Verify Groq initialized:**
-   ```bash
-   # Should show ✅ in output
-   npm start
-   ```
-
-2. **Test health endpoint:**
-   ```bash
-   curl http://localhost:3001/health
-   ```
-
-### Frontend doesn't connect to Backend
-
-1. **Verify CORS:** Backend has CORS enabled for all origins in development
-2. **Verify ports:**
-   - Backend: `http://localhost:3001`
-   - Frontend: `http://localhost:5173`
-3. **Check browser Console:** F12 > Console to see errors
-
-### ChromaConnectionError: Failed to connect to chromadb
-
-1. **Database is Off**: Your backend likely threw an `Upload Error` or `ChromaConnectionError` because ChromaDB isn't running. Ensure your vector database container is spun up (`docker-compose up chromadb` or `docker run ... chromadb/chroma`).
-2. **Anonymous Volumes Caching Old Modules**: If Docker Compose is throwing a missing package error (like `@huggingface/transformers`), or Alpine throws an `ld-linux` linking error on `onnxruntime`, try resetting your internal `node_modules` anonymous volumes by tearing everything down completely with `docker-compose down -v` and rebuilding via `docker-compose up --build`.
-
-### API Key Error
-
-1. Verify that `.env` in `/backend/` has the correct API Key
-2. Restart the backend after changing `.env`
-
----
-
-## 📞 Support
-
-To report issues:
-1. Check terminal logs
-2. Test the `/health` endpoint
-3. Verify that Groq is connected
-
----
-
-**Version:** 2.0  
-**Last updated:** March 24, 2026
+Open http://localhost:5173.
+
+Sample files for a first RAG query live in `backend/documents/` (`info.txt`, `penguins_test.txt`).
+
+### Troubleshooting
+
+- **`GROQ_API_KEY` missing:** add it to `backend/.env` and restart the backend. `GET /health` reports whether the key is configured and whether the Groq client initialized.
+- **`ChromaConnectionError`:** start Chroma first (`docker compose up chromadb` or the `docker run` command above).
+- **Frontend cannot reach the API:** confirm the backend is on port 3001 and that `VITE_API_URL` matches, then check the browser console.
+
+## API endpoints
+
+These are the routes `backend/server.js` actually mounts:
+
+| Method | Path | Description |
+| --- | --- | --- |
+| `GET` | `/` | Static API status page |
+| `GET` | `/health` | Server status, Groq readiness, and whether `GROQ_API_KEY` is set |
+| `POST` | `/chat` | Plain chat completion (no RAG retrieval, no agent tools) |
+| `POST` | `/rag` | Direct RAG QA. Set `stream: true` in the body to use SSE |
+| `POST` | `/upload` | Upload documents and ingest them into ChromaDB |
+| `GET` | `/documents` | List files in the documents directory |
+| `POST` | `/agent/chat` | LangGraph agent, JSON response (includes a self-critique pass) |
+| `POST` | `/agent/chat/stream` | LangGraph agent, SSE (`thinking`, `stream`, `final_response`) |
+
+`POST /rag/evaluate` is defined in `backend/src/routes/ragRoutes.js` but is **not** mounted by `server.js`.
+
+## Known limitations / Roadmap
+
+Current limitations of the running app:
+
+- Agent SSE emits `thinking`, `stream`, and `final_response` only. The frontend has handlers for `tool_call`, but the backend does not send that event.
+- The faithfulness eval helper and `POST /rag/evaluate` are not mounted on the running server.
+- Conversation memory is in-process (`MemorySaver`) and is lost on restart.
+- There is no automated test runner yet (`npm test` in `backend/` exits with an error). Ad-hoc scripts exist under `backend/test-*.js`.
+
+Other known gaps, for a later pass:
+
+- Dockerfiles currently start development servers, not production builds.
+- The `Discover` and `Profile` UI pages are placeholders.
+- Rate limiting is implemented in `backend/src/app.js`, but the running entrypoint is `server.js`, which does not use that limiter.
+
+Roadmap (not implemented here): mount and document the eval endpoint and publish a faithfulness table; stream intermediate tool events in agent mode; persist session memory; add a unit-test runner and CI; ship a hosted demo and production Docker images.
+
+## Demo
+
+TODO: add a short GIF showing a document upload, a RAG question with sources, and an agent turn that uses a tool.
+
+TODO: add a hosted demo URL.
+
+## Evaluation
+
+TODO: add a faithfulness eval table from a small golden set (in-context, out-of-context, and hallucination cases). The scoring helper already lives in `evaluateRagResponse` (`backend/src/services/ragService.js`).
+
+## License
+
+MIT. See [LICENSE](LICENSE).
